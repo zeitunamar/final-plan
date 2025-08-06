@@ -46,7 +46,7 @@ class StrategicObjectiveViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     @action(detail=False, methods=['get'])
-    def weight_summary(self):
+    def weight_summary(self, request):
         """Get weight summary for all strategic objectives"""
         try:
             objectives = StrategicObjective.objects.all()
