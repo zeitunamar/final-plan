@@ -35,6 +35,9 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
   const [useInitiativeFeed, setUseInitiativeFeed] = useState<boolean>(
     initialData?.initiative_feed ? true : false
   );
+  
+  // Use parentWeight directly as the effective parent weight
+  const effectiveParentWeight = parentWeight;
 
   const { register, handleSubmit, watch, setValue, reset, control, formState: { errors } } = useForm<any>({
     defaultValues: {
