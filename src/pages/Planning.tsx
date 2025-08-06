@@ -670,7 +670,7 @@ const Planning: React.FC = () => {
                   <InitiativeList
                     parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
                     parentType={selectedObjective ? 'objective' : 'program'}
-                    parentWeight={selectedObjective?.weight || selectedProgram?.strategic_objective?.weight || 100}
+                    parentWeight={selectedObjective ? (selectedObjective.effective_weight || selectedObjective.planner_weight || selectedObjective.weight) : (selectedProgram?.strategic_objective?.weight || 100)}
                     onEditInitiative={handleEditInitiative}
                     onSelectInitiative={handleSelectInitiative}
                     planKey={`planning-${refreshKey}`}
