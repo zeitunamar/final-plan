@@ -239,6 +239,80 @@ class StrategicInitiativeViewSet(viewsets.ModelViewSet):
                 {'error': str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+    
+    @action(detail=False, methods=['get'])
+    def weight_summary(self, request):
+        """Get weight summary for initiatives based on parent (objective, program, or subprogram)"""
+        try:
+            objective_id = request.query_params.get('objective')
+            program_id = request.query_params.get('program')
+            subprogram_id = request.query_params.get('subprogram')
+            
+            if objective_id:
+                # Get initiatives for this objective
+                initiatives = StrategicInitiative.objects.filter(strategic_objective=objective_id)
+                
+                # Get the objective to determine parent weight
+                try:
+                    objective = StrategicObjective.objects.get(id=objective_id)
+                    parent_weight = objective.get_effective_weight()
+                except StrategicObjective.DoesNotExist:
+                    return Response(
+                        {'error': 'Objective not found'}, 
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                    
+            elif program_id:
+                # Get initiatives for this program
+                initiatives = StrategicInitiative.objects.filter(program=program_id)
+                
+                # Get the program to determine parent weight
+                try:
+                    program = Program.objects.get(id=program_id)
+                    parent_weight = program.strategic_objective.get_effective_weight()
+                except Program.DoesNotExist:
+                    return Response(
+                        {'error': 'Program not found'}, 
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                    
+            elif subprogram_id:
+                # Get initiatives for this subprogram
+                initiatives = StrategicInitiative.objects.filter(subprogram=subprogram_id)
+                parent_weight = 100  # Default weight for subprograms
+                
+            else:
+                return Response(
+                    {'error': 'Must specify objective, program, or subprogram parameter'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Calculate total weight of initiatives
+            total_initiatives_weight = initiatives.aggregate(
+                total=Sum('weight')
+            )['total'] or Decimal('0')
+            
+            remaining_weight = parent_weight - float(total_initiatives_weight)
+            
+            # For objectives, weight must be exactly equal to parent weight
+            # For programs, weight just needs to not exceed parent weight
+            if objective_id:
+                is_valid = abs(float(total_initiatives_weight) - parent_weight) < 0.01
+            else:
+                is_valid = float(total_initiatives_weight) <= parent_weight
+            
+            return Response({
+                'total_initiatives_weight': float(total_initiatives_weight),
+                'remaining_weight': remaining_weight,
+                'parent_weight': parent_weight,
+                'is_valid': is_valid
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class PerformanceMeasureViewSet(viewsets.ModelViewSet):
     queryset = PerformanceMeasure.objects.all()
