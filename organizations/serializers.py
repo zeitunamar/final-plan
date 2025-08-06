@@ -176,15 +176,25 @@ class PlanSerializer(serializers.ModelSerializer):
         try:
             with transaction.atomic():
                 # Extract selected objectives data if provided
-                selected_objectives_data = self.context.get('selected_objectives', [])
-                selected_objectives_weights = self.context.get('selected_objectives_weights', {})
+                selected_objectives_data = validated_data.pop('selected_objectives', [])
+                selected_objectives_weights = validated_data.pop('selected_objectives_weights', {})
                 
                 # Create the plan
                 plan = Plan.objects.create(**validated_data)
                 
                 # Add selected objectives if provided
                 if selected_objectives_data:
-                    objective_ids = [obj['id'] for obj in selected_objectives_data if 'id' in obj]
+                    # Handle both list of IDs and list of objects
+                    if isinstance(selected_objectives_data, list):
+                        if selected_objectives_data and isinstance(selected_objectives_data[0], dict):
+                            # List of objects with 'id' field
+                            objective_ids = [obj['id'] for obj in selected_objectives_data if 'id' in obj]
+                        else:
+                            # List of IDs
+                            objective_ids = selected_objectives_data
+                    else:
+                        objective_ids = []
+                    
                     if objective_ids:
                         plan.selected_objectives.set(objective_ids)
                 
@@ -196,6 +206,8 @@ class PlanSerializer(serializers.ModelSerializer):
                 return plan
         except Exception as e:
             print(f"Error creating plan: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             raise serializers.ValidationError(f"Failed to create plan: {str(e)}")
     
     def update(self, instance, validated_data):
@@ -203,8 +215,8 @@ class PlanSerializer(serializers.ModelSerializer):
         try:
             with transaction.atomic():
                 # Extract selected objectives data if provided
-                selected_objectives_data = self.context.get('selected_objectives', [])
-                selected_objectives_weights = self.context.get('selected_objectives_weights', {})
+                selected_objectives_data = validated_data.pop('selected_objectives', [])
+                selected_objectives_weights = validated_data.pop('selected_objectives_weights', {})
                 
                 # Update the plan fields
                 for attr, value in validated_data.items():
@@ -212,18 +224,31 @@ class PlanSerializer(serializers.ModelSerializer):
                 
                 # Update selected objectives if provided
                 if selected_objectives_data:
-                    objective_ids = [obj['id'] for obj in selected_objectives_data if 'id' in obj]
+                    # Handle both list of IDs and list of objects
+                    if isinstance(selected_objectives_data, list):
+                        if selected_objectives_data and isinstance(selected_objectives_data[0], dict):
+                            # List of objects with 'id' field
+                            objective_ids = [obj['id'] for obj in selected_objectives_data if 'id' in obj]
+                        else:
+                            # List of IDs
+                            objective_ids = selected_objectives_data
+                    else:
+                        objective_ids = []
+                    
                     if objective_ids:
                         instance.selected_objectives.set(objective_ids)
                 
                 # Update custom weights if provided
                 if selected_objectives_weights:
                     instance.selected_objectives_weights = selected_objectives_weights
-                
+                    
                 instance.save()
+                
                 return instance
         except Exception as e:
             print(f"Error updating plan: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             raise serializers.ValidationError(f"Failed to update plan: {str(e)}")
 
 class InitiativeFeedSerializer(serializers.ModelSerializer):

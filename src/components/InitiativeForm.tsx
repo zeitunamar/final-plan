@@ -118,6 +118,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
       
       try {
         console.log(`InitiativeForm: Fetching existing initiatives for ${parentType} ${parentId}`);
+        console.log(`InitiativeForm: User organization ID: ${userOrgId}`);
         
         let response;
         if (parentType === 'objective') {
@@ -129,22 +130,41 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
         }
         
         const initiativesData = response?.data || [];
+        console.log(`InitiativeForm: Raw initiatives from API (${initiativesData.length}):`, 
+          initiativesData.map(i => ({
+            id: i.id,
+            name: i.name,
+            weight: i.weight,
+            organization: i.organization,
+            is_default: i.is_default
+          }))
+        );
         
         // CRITICAL FIX: Filter initiatives to only include:
         // 1. Default initiatives (available to all)
         // 2. Initiatives created by the current user's organization
         const filteredInitiatives = initiativesData.filter(initiative => {
           const isDefault = initiative.is_default;
-          const belongsToUserOrg = !initiative.organization || initiative.organization === userOrgId;
+          const belongsToUserOrg = initiative.organization === userOrgId || !initiative.organization;
           
-          console.log(`Initiative ${initiative.name}: isDefault=${isDefault}, belongsToUserOrg=${belongsToUserOrg}, org=${initiative.organization}, userOrg=${userOrgId}`);
+          const shouldInclude = isDefault || belongsToUserOrg;
           
-          return isDefault || belongsToUserOrg;
+          console.log(`Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, userOrg=${userOrgId}, belongsToUserOrg=${belongsToUserOrg}, shouldInclude=${shouldInclude}`);
+          
+          return shouldInclude;
         });
         
         console.log('InitiativeForm: Total initiatives from API:', initiativesData.length);
         console.log('InitiativeForm: Filtered initiatives for user org:', filteredInitiatives.length);
-        console.log('InitiativeForm: User organization ID:', userOrgId);
+        console.log('InitiativeForm: Filtered initiatives details:', 
+          filteredInitiatives.map(i => ({
+            id: i.id,
+            name: i.name,
+            weight: i.weight,
+            organization: i.organization,
+            is_default: i.is_default
+          }))
+        );
         
         setExistingInitiatives(filteredInitiatives);
       } catch (error) {

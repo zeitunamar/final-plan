@@ -1361,7 +1361,12 @@ export const plans = {
       
       // Handle selected objectives and their custom weights
       if (formattedData.selected_objectives) {
-        formattedData.selected_objectives = formattedData.selected_objectives.map((obj: any) => obj.id);
+        // Convert to array of IDs if it's an array of objects
+        if (Array.isArray(formattedData.selected_objectives)) {
+          formattedData.selected_objectives = formattedData.selected_objectives.map((obj: any) => 
+            typeof obj === 'object' && obj.id ? obj.id : obj
+          );
+        }
       }
       
       if (formattedData.selected_objectives_weights) {
@@ -1372,6 +1377,8 @@ export const plans = {
         });
         formattedData.selected_objectives_weights = weights;
       }
+      
+      console.log('Formatted plan data for API:', formattedData);
       
       await ensureCsrfToken();
       const response = await api.post(`/plans/`, formattedData);
