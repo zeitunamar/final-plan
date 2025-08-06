@@ -39,6 +39,7 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
   const [validationError, setValidationError] = useState<string | null>(null);
   const [totalWeight, setTotalWeight] = useState(0);
   const [isSavingWeights, setIsSavingWeights] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(false);
   
   // Fetch all objectives
   const { data: objectivesData, isLoading, error, refetch } = useQuery({
@@ -70,7 +71,7 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
 
   // Initialize objective weights from initial objectives
   useEffect(() => {
-    if (initialObjectives.length > 0) {
+    if (initialObjectives.length > 0 && !hasInitialized) {
       console.log('Initializing weights from initial objectives:', 
                   initialObjectives.map(obj => ({
                     id: obj.id,
@@ -93,8 +94,9 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
       
       // Ensure these objectives are shown as selected
       setSelectedObjectives(initialObjectives);
+      setHasInitialized(true);
     }
-  }, [initialObjectives]);
+  }, [initialObjectives, hasInitialized]);
 
   // Calculate total weight whenever objectiveWeights changes
   useEffect(() => {
@@ -110,27 +112,17 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
     setTotalWeight(total);
   }, [objectiveWeights, selectedObjectives]);
   
-  // Separate effect for validation to avoid infinite loop
+  // Separate effect for validation and parent callback
   useEffect(() => {
-    if (selectedObjectives.length > 0 && Object.keys(objectiveWeights).length > 0) {
+    if (selectedObjectives.length > 0 && Object.keys(objectiveWeights).length > 0 && hasInitialized) {
       if (Math.abs(totalWeight - 100) < 0.01) { // Using a small epsilon for floating point comparison
         setValidationError(null);
-        // Pass the updated objectives with weights to the parent
+        
+        // Create objectives with weights - use JSON.stringify for deep comparison
         const objectivesWithWeights = selectedObjectives.map(obj => {
-          // Use the value from objectiveWeights, which may have been set by the user
-          // Get the user-set weight (from objectiveWeights) or use effective weight or fall back to original
           const userSetWeight = objectiveWeights[obj.id];
           const originalEffectiveWeight = obj.effective_weight || getEffectiveWeight(obj);
           const effectiveWeight = userSetWeight !== undefined ? userSetWeight : originalEffectiveWeight;
-          
-          console.log(`Objective ${obj.id} (${obj.title}) weight calculation:`, {
-            userSetWeight,
-            originalEffectiveWeight,
-            effectiveWeight,
-            obj_weight: obj.weight,
-            obj_planner_weight: obj.planner_weight,
-            obj_effective_weight: obj.effective_weight
-          });
           
           return {
             ...obj,
@@ -139,14 +131,25 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
             effective_weight: effectiveWeight // Set effective_weight for downstream components
           };
         });
-        onObjectivesSelected(objectivesWithWeights);
+        
+        // Only call parent callback if the data has actually changed
+        const currentDataString = JSON.stringify(objectivesWithWeights.map(obj => ({
+          id: obj.id,
+          effective_weight: obj.effective_weight
+        })));
+        
+        // Store the last sent data to prevent unnecessary calls
+        if (!HorizontalObjectiveSelector.lastSentData || HorizontalObjectiveSelector.lastSentData !== currentDataString) {
+          HorizontalObjectiveSelector.lastSentData = currentDataString;
+          onObjectivesSelected(objectivesWithWeights);
+        }
       } else {
         setValidationError(`Total weight must be 100%. Current: ${totalWeight.toFixed(2)}%`);
       }
     } else {
       setValidationError(null);
     }
-  }, [totalWeight, selectedObjectives, objectiveWeights, onObjectivesSelected]);
+  }, [totalWeight, selectedObjectives, objectiveWeights, hasInitialized]);
 
   const handleSelectObjective = (objective: StrategicObjective) => {
     // Check if already selected
@@ -158,8 +161,6 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
     
     // Add to selected objectives
     const updatedObjectives = [...selectedObjectives, objective];
-    console.log(`Selected objective ${objective.id} (${objective.title}) with effective weight:`, 
-                objective.effective_weight || getEffectiveWeight(objective));
     setSelectedObjectives(updatedObjectives);
 
     // Set initial weight to the effective weight of the objective
@@ -186,11 +187,11 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
   const handleWeightChange = (objectiveId: number | string, weight: number) => {
     // Update weight for this objective
     setObjectiveWeights(prev => {
-      // Make sure to use a new object to trigger useEffect
-      return {
+      const newWeights = {
         ...prev,
         [objectiveId]: weight
       };
+      return newWeights;
     });
   };
 
@@ -663,5 +664,8 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
     </div>
   );
 };
+
+// Static property to track last sent data
+HorizontalObjectiveSelector.lastSentData = null;
 
 export default HorizontalObjectiveSelector;
