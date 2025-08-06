@@ -189,6 +189,10 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
     filteredInitiativesCount: filteredInitiatives.length
   });
 
+  // Check if the total weight exactly matches the parent weight (for objectives)
+  const isWeightComplete = parentType === 'objective' 
+    ? Math.abs(total_initiatives_weight - parentWeight) < 0.01
+    : total_initiatives_weight >= parentWeight;
   // If there are no initiatives yet, show empty state
   if (initiativesList.data.length === 0) {
     return (
@@ -296,6 +300,7 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
             <p className="text-sm">
               Total weight must equal exactly {parentWeight}%. 
               Current total: {total_initiatives_weight.toFixed(1)}%
+              (Need {remaining_weight.toFixed(1)}% more)
             </p>
           </div>
         )}
@@ -315,11 +320,24 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
           <div className="mt-4">
             <button
               onClick={() => validateInitiativesMutation.mutate()}
-              disabled={validateInitiativesMutation.isPending || isLoadingSummary}
+              disabled={
+                validateInitiativesMutation.isPending || 
+                isLoadingSummary || 
+                !isWeightComplete ||
+                filteredInitiatives.length === 0
+              }
               className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
-              {validateInitiativesMutation.isPending ? 'Validating...' : 'Validate Initiatives Weight'}
+              {validateInitiativesMutation.isPending ? 'Validating...' : 
+               !isWeightComplete ? `Complete Weight Distribution (${remaining_weight.toFixed(1)}% remaining)` :
+               'Validate Initiatives Weight'}
             </button>
+            
+            {!isWeightComplete && filteredInitiatives.length > 0 && (
+              <p className="mt-2 text-xs text-amber-600 text-center">
+                Add more initiatives to reach exactly {parentWeight}% total weight
+              </p>
+            )}
             
             {validateInitiativesMutation.isError && (
               <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
@@ -501,11 +519,20 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
         <div className="mt-4 text-center">
           <button 
             onClick={() => onEditInitiative({})}
+            disabled={parentType === 'objective' && remaining_weight <= 0}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
           >
             <PlusCircle className="h-4 w-4 mr-2" />
-            {initiativesList.data.length === 0 ? 'Create First Initiative' : 'Create New Initiative'}
+            {initiativesList.data.length === 0 ? 'Create First Initiative' : 
+             remaining_weight <= 0 ? `No Weight Available (${remaining_weight.toFixed(1)}%)` :
+             'Create New Initiative'}
           </button>
+          
+          {parentType === 'objective' && remaining_weight <= 0 && total_initiatives_weight < parentWeight && (
+            <p className="mt-2 text-xs text-amber-600">
+              Cannot add more initiatives. Total weight must equal exactly {parentWeight}%.
+            </p>
+          )}
         </div>
       )}
     </div>

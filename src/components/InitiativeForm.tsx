@@ -98,14 +98,17 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
       sum + (Number(init.weight) || 0), 0
     );
     
-    const remainingWeight = parentWeight - otherInitiativesWeight;
+    // Use the custom parent weight (effective weight) for calculations
+    const effectiveParentWeight = parentWeight; // This should be the custom weight passed from parent
+    const remainingWeight = effectiveParentWeight - otherInitiativesWeight;
     const maxWeight = Math.max(0, remainingWeight);
     
     return {
       otherInitiativesWeight,
       remainingWeight,
       maxWeight,
-      totalWithCurrent: otherInitiativesWeight + (Number(watchedWeight) || 0)
+      totalWithCurrent: otherInitiativesWeight + (Number(watchedWeight) || 0),
+      effectiveParentWeight
     };
   };
 
@@ -159,6 +162,21 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
       setIsSubmitting(true);
       setError(null);
       
+      // Validate that the weight doesn't exceed the remaining weight
+      const currentWeight = Number(data.weight) || 0;
+      if (currentWeight > weights.maxWeight) {
+        setError(`Weight cannot exceed ${weights.maxWeight.toFixed(2)}%. Available weight: ${weights.remainingWeight.toFixed(2)}%`);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // For objectives, validate that total weight doesn't exceed parent weight
+      if (parentType === 'objective' && weights.totalWithCurrent > weights.effectiveParentWeight) {
+        setError(`Total initiative weight (${weights.totalWithCurrent.toFixed(2)}%) cannot exceed objective weight (${weights.effectiveParentWeight.toFixed(2)}%)`);
+        setIsSubmitting(false);
+        return;
+      }
+      
       // Prepare submission data
       const submissionData = {
         ...data,
@@ -198,7 +216,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-blue-600">Parent Weight</p>
-            <p className="font-semibold text-blue-800">{parentWeight.toFixed(2)}%</p>
+            <p className="font-semibold text-blue-800">{weights.effectiveParentWeight.toFixed(2)}%</p>
           </div>
           <div>
             <p className="text-blue-600">Other Initiatives</p>
@@ -214,7 +232,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
         
         {parentType === 'objective' && (
           <p className="mt-2 text-xs text-blue-600">
-            <strong>Important:</strong> For objectives, total initiative weights must equal exactly {parentWeight}%
+            <strong>Important:</strong> For objectives, total initiative weights must equal exactly {weights.effectiveParentWeight.toFixed(2)}%
           </p>
         )}
         
@@ -404,6 +422,17 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
         <p className="mt-1 text-xs text-gray-500">
           Weight represents the importance of this initiative within the {parentType}
         </p>
+        
+        {/* Enhanced weight validation info */}
+        <div className="mt-2 text-xs text-blue-600 bg-blue-50 p-2 rounded">
+          <p><strong>Weight Distribution:</strong></p>
+          <p>• Parent {parentType} weight: {weights.effectiveParentWeight.toFixed(2)}%</p>
+          <p>• Other initiatives: {weights.otherInitiativesWeight.toFixed(2)}%</p>
+          <p>• Available for this initiative: {weights.maxWeight.toFixed(2)}%</p>
+          {watchedWeight && (
+            <p>• Total after adding this: {weights.totalWithCurrent.toFixed(2)}%</p>
+          )}
+        </div>
       </div>
 
       {/* Form Actions */}
@@ -418,7 +447,15 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
         </button>
         <button
           type="submit"
-          disabled={isSubmitting || !weights.maxWeight || weights.maxWeight <= 0}
+          disabled={
+            isSubmitting || 
+            !weights.maxWeight || 
+            weights.maxWeight <= 0 || 
+            !watchedWeight || 
+            Number(watchedWeight) <= 0 ||
+            Number(watchedWeight) > weights.maxWeight ||
+            (parentType === 'objective' && weights.totalWithCurrent > weights.effectiveParentWeight)
+          }
           className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
         >
           {isSubmitting ? (
