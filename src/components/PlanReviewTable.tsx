@@ -850,7 +850,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                                   )}
                                 </td>
                                 <td rowSpan={objectiveRowSpan} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 bg-gray-50">
-                                 {displayWeight.toFixed(1)}%
+                                    {calculatedWeight.toFixed(1)}%
                                 </td>
                               </>
                             )}
@@ -906,11 +906,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
                 return rows;
               })}
-              
-              // Use stored planner weight if available, otherwise use calculated weight
-              const displayWeight = objective.effective_weight !== undefined 
-                ? objective.effective_weight 
-                : calculatedWeight;
               
               {/* Summary Row */}
               <tr className="bg-blue-50 border-t-2 border-blue-200">
