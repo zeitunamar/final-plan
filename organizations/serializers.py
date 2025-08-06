@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import transaction
 from .models import (
     Organization, OrganizationUser, StrategicObjective, 
     Program, StrategicInitiative, PerformanceMeasure, MainActivity,
@@ -98,10 +99,132 @@ class PlanSerializer(serializers.ModelSerializer):
     strategic_objective_title = serializers.CharField(source='strategic_objective.title', read_only=True)
     program_name = serializers.CharField(source='program.name', read_only=True)
     reviews = PlanReviewSerializer(many=True, read_only=True)
+    selected_objectives_data = serializers.SerializerMethodField()
+    objectives = serializers.SerializerMethodField()
     
     class Meta:
         model = Plan
         fields = '__all__'
+    
+    def get_selected_objectives_data(self, obj):
+        """Get complete data for all selected objectives with their custom weights"""
+        try:
+            selected_objectives = obj.selected_objectives.all()
+            objectives_data = []
+            
+            for objective in selected_objectives:
+                # Get custom weight from selected_objectives_weights if available
+                custom_weight = None
+                if obj.selected_objectives_weights and str(objective.id) in obj.selected_objectives_weights:
+                    custom_weight = obj.selected_objectives_weights[str(objective.id)]
+                
+                # Get effective weight (custom weight if set, otherwise original weight)
+                effective_weight = custom_weight if custom_weight is not None else objective.weight
+                
+                # Get initiatives for this objective (filtered by organization)
+                initiatives = objective.initiatives.filter(
+                    models.Q(is_default=True) | 
+                    models.Q(organization=obj.organization) |
+                    models.Q(organization__isnull=True)
+                )
+                
+                initiatives_data = []
+                for initiative in initiatives:
+                    # Get performance measures (filtered by organization)
+                    measures = initiative.performance_measures.filter(
+                        models.Q(organization=obj.organization) |
+                        models.Q(organization__isnull=True)
+                    )
+                    
+                    # Get main activities (filtered by organization)
+                    activities = initiative.main_activities.filter(
+                        models.Q(organization=obj.organization) |
+                        models.Q(organization__isnull=True)
+                    )
+                    
+                    initiatives_data.append({
+                        'id': initiative.id,
+                        'name': initiative.name,
+                        'weight': float(initiative.weight),
+                        'organization_name': initiative.organization.name if initiative.organization else None,
+                        'performance_measures': PerformanceMeasureSerializer(measures, many=True).data,
+                        'main_activities': MainActivitySerializer(activities, many=True).data
+                    })
+                
+                objectives_data.append({
+                    'id': objective.id,
+                    'title': objective.title,
+                    'description': objective.description,
+                    'weight': float(objective.weight),
+                    'planner_weight': float(custom_weight) if custom_weight is not None else None,
+                    'effective_weight': float(effective_weight),
+                    'is_default': objective.is_default,
+                    'initiatives': initiatives_data
+                })
+            
+            return objectives_data
+        except Exception as e:
+            print(f"Error in get_selected_objectives_data: {str(e)}")
+            return []
+    
+    def get_objectives(self, obj):
+        """Alias for selected_objectives_data for backward compatibility"""
+        return self.get_selected_objectives_data(obj)
+    
+    def create(self, validated_data):
+        """Override create to handle selected objectives and their weights"""
+        try:
+            with transaction.atomic():
+                # Extract selected objectives data if provided
+                selected_objectives_data = self.context.get('selected_objectives', [])
+                selected_objectives_weights = self.context.get('selected_objectives_weights', {})
+                
+                # Create the plan
+                plan = Plan.objects.create(**validated_data)
+                
+                # Add selected objectives if provided
+                if selected_objectives_data:
+                    objective_ids = [obj['id'] for obj in selected_objectives_data if 'id' in obj]
+                    if objective_ids:
+                        plan.selected_objectives.set(objective_ids)
+                
+                # Save custom weights if provided
+                if selected_objectives_weights:
+                    plan.selected_objectives_weights = selected_objectives_weights
+                    plan.save()
+                
+                return plan
+        except Exception as e:
+            print(f"Error creating plan: {str(e)}")
+            raise serializers.ValidationError(f"Failed to create plan: {str(e)}")
+    
+    def update(self, instance, validated_data):
+        """Override update to handle selected objectives and their weights"""
+        try:
+            with transaction.atomic():
+                # Extract selected objectives data if provided
+                selected_objectives_data = self.context.get('selected_objectives', [])
+                selected_objectives_weights = self.context.get('selected_objectives_weights', {})
+                
+                # Update the plan fields
+                for attr, value in validated_data.items():
+                    setattr(instance, attr, value)
+                
+                # Update selected objectives if provided
+                if selected_objectives_data:
+                    objective_ids = [obj['id'] for obj in selected_objectives_data if 'id' in obj]
+                    if objective_ids:
+                        instance.selected_objectives.set(objective_ids)
+                
+                # Update custom weights if provided
+                if selected_objectives_weights:
+                    instance.selected_objectives_weights = selected_objectives_weights
+                
+                instance.save()
+                return instance
+        except Exception as e:
+            print(f"Error updating plan: {str(e)}")
+            raise serializers.ValidationError(f"Failed to update plan: {str(e)}")
 
 class InitiativeFeedSerializer(serializers.ModelSerializer):
     strategic_objective_title = serializers.CharField(source='strategic_objective.title', read_only=True)

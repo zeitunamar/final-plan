@@ -1359,6 +1359,20 @@ export const plans = {
         formattedData.to_date = new Date(formattedData.to_date).toISOString().split('T')[0];
       }
       
+      // Handle selected objectives and their custom weights
+      if (formattedData.selected_objectives) {
+        formattedData.selected_objectives = formattedData.selected_objectives.map((obj: any) => obj.id);
+      }
+      
+      if (formattedData.selected_objectives_weights) {
+        // Ensure weights are properly formatted
+        const weights: Record<string, number> = {};
+        Object.entries(formattedData.selected_objectives_weights).forEach(([key, value]) => {
+          weights[key] = Number(value);
+        });
+        formattedData.selected_objectives_weights = weights;
+      }
+      
       await ensureCsrfToken();
       const response = await api.post(`/plans/`, formattedData);
       return response.data;

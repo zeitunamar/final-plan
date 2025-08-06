@@ -429,12 +429,25 @@ const Planning: React.FC = () => {
         throw new Error('Missing required plan data');
       }
       
+      // Prepare selected objectives weights
+      const selectedObjectivesWeights: Record<string, number> = {};
+      selectedObjectives.forEach(obj => {
+        const effectiveWeight = obj.effective_weight !== undefined 
+          ? obj.effective_weight
+          : obj.planner_weight !== undefined && obj.planner_weight !== null
+            ? obj.planner_weight
+            : obj.weight;
+        selectedObjectivesWeights[obj.id.toString()] = effectiveWeight;
+      });
+      
       // Create plan data
       const planData = {
         organization: userOrganization.id,
         planner_name: plannerName,
         type: selectedPlanType,
         strategic_objective: selectedObjectives[0].id, // Primary objective
+        selected_objectives: selectedObjectives,
+        selected_objectives_weights: selectedObjectivesWeights,
         fiscal_year: new Date().getFullYear().toString(),
         from_date: fromDate,
         to_date: toDate,
@@ -442,6 +455,7 @@ const Planning: React.FC = () => {
       };
       
       console.log('Submitting plan:', planData);
+      console.log('Selected objectives weights:', selectedObjectivesWeights);
       
       // Create the plan
       const createdPlan = await plans.create(planData);

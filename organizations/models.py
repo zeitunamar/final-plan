@@ -1020,7 +1020,7 @@ class Plan(models.Model):
         super().clean()
         
         # Validate date range
-        if self.to_date <= self.from_date:
+        if self.to_date and self.from_date and self.to_date <= self.from_date:
             raise ValidationError('End date must be after start date')
             
         # Make sure we have at least one of strategic_objective, program
