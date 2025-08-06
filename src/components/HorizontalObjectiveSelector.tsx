@@ -38,6 +38,7 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
   const [totalWeight, setTotalWeight] = useState(0);
   const [isSavingWeights, setIsSavingWeights] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(initialObjectives.length === 0);
+  const [lastSentData, setLastSentData] = useState<string>('');
   
   // Fetch all objectives
   const { data: objectivesData, isLoading, error, refetch } = useQuery({
@@ -101,7 +102,7 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
   
   // Validation and parent callback effect
   useEffect(() => {
-    if (selectedObjectives.length > 0 && hasInitialized) {
+    if (hasInitialized) {
       if (Math.abs(totalWeight - 100) < 0.01) { // Using a small epsilon for floating point comparison
         setValidationError(null);
         
@@ -119,18 +120,30 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
           };
         });
         
-        // Call parent callback with selected objectives only
-        onObjectivesSelected(objectivesWithWeights);
+        // Only call parent callback if data has actually changed
+        const currentDataString = JSON.stringify(objectivesWithWeights.map(obj => ({
+          id: obj.id,
+          effective_weight: obj.effective_weight
+        })));
+        
+        if (currentDataString !== lastSentData) {
+          setLastSentData(currentDataString);
+          onObjectivesSelected(objectivesWithWeights);
+        }
       } else {
         setValidationError(`Total weight must be 100%. Current: ${totalWeight.toFixed(2)}%`);
       }
     } else {
       if (selectedObjectives.length === 0) {
         setValidationError(null);
-        onObjectivesSelected([]); // Pass empty array when no objectives selected
+        // Only call parent callback if we haven't sent empty array yet
+        if (lastSentData !== '[]') {
+          setLastSentData('[]');
+          onObjectivesSelected([]);
+        }
       }
     }
-  }, [totalWeight, selectedObjectives, objectiveWeights, hasInitialized, onObjectivesSelected]);
+  }, [totalWeight, selectedObjectives, objectiveWeights, hasInitialized, lastSentData]);
 
   const handleSelectObjective = (objective: StrategicObjective) => {
     // Check if already selected
