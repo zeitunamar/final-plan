@@ -1,117 +1,152 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { initiatives, performanceMeasures, mainActivities, plans, auth, organizations, objectives } from '../lib/api';
-import { AlertCircle, Info, PlusCircle, ChevronRight, FilePlus, FileSpreadsheet, Send, ArrowLeft, Building2, Eye, File as FilePdf } from 'lucide-react';
+import { 
+  Target, 
+  Plus, 
+  Edit, 
+  Trash2, 
+  Save, 
+  Loader, 
+  AlertCircle, 
+  CheckCircle, 
+  ArrowLeft, 
+  ArrowRight, 
+  Eye, 
+  Send,
+  Calculator,
+  DollarSign,
+  Activity,
+  BarChart3,
+  FileSpreadsheet,
+  Building2,
+  User,
+  Calendar,
+  FileType,
+  Info,
+  RefreshCw
+} from 'lucide-react';
 import { useLanguage } from '../lib/i18n/LanguageContext';
-import Cookies from 'js-cookie';
-import StrategicObjectivesList from '../components/StrategicObjectivesList';
-import InitiativeForm from '../components/InitiativeForm';
-import InitiativeList from '../components/InitiativeList';
-import PlanningHeader from '../components/PlanningHeader';
-import PerformanceMeasureForm from '../components/PerformanceMeasureForm';
-import PerformanceMeasureList from '../components/PerformanceMeasureList';
-import MainActivityForm from '../components/MainActivityForm';
-import MainActivityList from '../components/MainActivityList';
-import PlanSubmitForm from '../components/PlanSubmitForm';
-import PlanTypeSelector from '../components/PlanTypeSelector';
-import PlanPreviewModal from '../components/PlanPreviewModal';
-import HorizontalObjectiveSelector from '../components/HorizontalObjectiveSelector';
-import type { StrategicObjective, StrategicInitiative, Program, PerformanceMeasure } from '../types/organization';
-import type { MainActivity, PlanType } from '../types/plan';
-import { isPlanner } from '../types/user';
-import { processDataForExport } from '../lib/utils/export';
-import { exportToExcel, exportToPDF } from '../lib/utils/export';
+import { 
+  organizations, 
+  objectives, 
+  programs, 
+  initiatives, 
+  performanceMeasures, 
+  mainActivities, 
+  plans, 
+  auth,
+  activityBudgets,
+  api
+} from '../lib/api';
+import type { 
+  Organization, 
+  StrategicObjective, 
+  Program, 
+  StrategicInitiative 
+} from '../types/organization';
+import type { 
+  Plan, 
+  PlanType, 
+  MainActivity, 
+  PerformanceMeasure, 
+  ActivityBudget, 
+  BudgetCalculationType, 
+  ActivityType 
+} from '../types/plan';
+import { isPlanner, isAdmin } from '../types/user';
 
-function Planning() {
+// Component imports
+import PlanTypeSelector from '../components/PlanTypeSelector';
+import ObjectiveSelectionMode from '../components/ObjectiveSelectionMode';
+import HorizontalObjectiveSelector from '../components/HorizontalObjectiveSelector';
+import StrategicObjectivesList from '../components/StrategicObjectivesList';
+import InitiativeList from '../components/InitiativeList';
+import InitiativeForm from '../components/InitiativeForm';
+import PerformanceMeasureList from '../components/PerformanceMeasureList';
+import PerformanceMeasureForm from '../components/PerformanceMeasureForm';
+import MainActivityList from '../components/MainActivityList';
+import MainActivityForm from '../components/MainActivityForm';
+import ActivityBudgetForm from '../components/ActivityBudgetForm';
+import ActivityBudgetDetails from '../components/ActivityBudgetDetails';
+import ActivityBudgetSummary from '../components/ActivityBudgetSummary';
+import PlanReviewTable from '../components/PlanReviewTable';
+import PlanSubmitForm from '../components/PlanSubmitForm';
+import PlanPreviewModal from '../components/PlanPreviewModal';
+import PlanningHeader from '../components/PlanningHeader';
+
+// Costing tool imports
+import TrainingCostingTool from '../components/TrainingCostingTool';
+import MeetingWorkshopCostingTool from '../components/MeetingWorkshopCostingTool';
+import SupervisionCostingTool from '../components/SupervisionCostingTool';
+import PrintingCostingTool from '../components/PrintingCostingTool';
+import ProcurementCostingTool from '../components/ProcurementCostingTool';
+
+type PlanningStep = 
+  | 'plan-type' 
+  | 'objective-mode' 
+  | 'objective-selection' 
+  | 'planning' 
+  | 'review' 
+  | 'submit';
+
+type ObjectiveSelectionMode = 'default' | 'custom';
+
+const Planning: React.FC = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // Core state
+  const [currentStep, setCurrentStep] = useState<PlanningStep>('plan-type');
+  const [selectedPlanType, setSelectedPlanType] = useState<PlanType>('LEO/EO Plan');
+  const [objectiveMode, setObjectiveMode] = useState<ObjectiveSelectionMode>('default');
   const [selectedObjectives, setSelectedObjectives] = useState<StrategicObjective[]>([]);
-  const [selectedObjectiveId, setSelectedObjectiveId] = useState<string | null>(null);
+  const [selectedObjective, setSelectedObjective] = useState<StrategicObjective | null>(null);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [selectedInitiative, setSelectedInitiative] = useState<StrategicInitiative | null>(null);
+  
+  // User and organization state
+  const [userOrganization, setUserOrganization] = useState<Organization | null>(null);
+  const [plannerName, setPlannerName] = useState<string>('');
+  const [isUserPlanner, setIsUserPlanner] = useState(false);
+  const [userOrgId, setUserOrgId] = useState<number | null>(null);
+  
+  // Planning period state
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
+  
+  // Form and UI state
+  const [showInitiativeForm, setShowInitiativeForm] = useState(false);
+  const [showMeasureForm, setShowMeasureForm] = useState(false);
+  const [showActivityForm, setShowActivityForm] = useState(false);
+  const [showBudgetForm, setShowBudgetForm] = useState(false);
+  const [showBudgetDetails, setShowBudgetDetails] = useState(false);
+  const [showCostingTool, setShowCostingTool] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  
+  // Edit state
   const [editingInitiative, setEditingInitiative] = useState<StrategicInitiative | null>(null);
   const [editingMeasure, setEditingMeasure] = useState<PerformanceMeasure | null>(null);
   const [editingActivity, setEditingActivity] = useState<MainActivity | null>(null);
-  const [showSubmitForm, setShowSubmitForm] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [editingBudget, setEditingBudget] = useState<ActivityBudget | null>(null);
+  
+  // Budget and costing state
+  const [selectedActivity, setSelectedActivity] = useState<MainActivity | null>(null);
+  const [budgetCalculationType, setBudgetCalculationType] = useState<BudgetCalculationType>('WITHOUT_TOOL');
+  const [selectedActivityType, setSelectedActivityType] = useState<ActivityType | null>(null);
+  const [costingToolData, setCostingToolData] = useState<any>(null);
+  
+  // Error and loading state
   const [error, setError] = useState<string | null>(null);
-  const [planId, setPlanId] = useState<string | null>(null);
-  const [fromDate, setFromDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [toDate, setToDate] = useState<string>(() => {
-    const date = new Date();
-    date.setFullYear(date.getFullYear() + 1);
-    return date.toISOString().split('T')[0];
-  });
-  const [userPlans, setUserPlans] = useState<any[]>([]);
-  const [planType, setPlanType] = useState<PlanType>('LEO/EO Plan'); // Default to LEO/EO Plan
-  const [isUserPlanner, setIsUserPlanner] = useState(false);
-  const [userOrgId, setUserOrgId] = useState<number | null>(null);
-  const [userName, setUserName] = useState<string>('');
-  const [orgName, setOrgName] = useState<string>('');
-  const [planKey, setPlanKey] = useState<number>(0);
-  // State to track plan type selection step
-  const [hasPlanTypeSelected, setHasPlanTypeSelected] = useState(false);
-  // State to track plans view
-  const [showPlansList, setShowPlansList] = useState(true);
-  // State to track objective selection step
-  const [hasObjectivesSelected, setHasObjectivesSelected] = useState(false);
-  // State to track submission status
-  const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
-  // New state for plan preview modal
-  const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
-  
-  // Debug state to track planner weights
-  const [plannerWeightsDebug, setPlannerWeightsDebug] = useState<Record<string, number>>({});
+  const [success, setSuccess] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  // Force re-render when initiative is added or removed
-  const refreshData = () => {
-    setPlanKey(prevKey => prevKey + 1);
-  };
-  
-  // Save selected objectives to localStorage whenever they change
-  useEffect(() => {
-    if (selectedObjectives.length > 0) {
-      try {
-       // Ensure effective_weight is set correctly for all objectives
-       const objectivesWithEffectiveWeight = selectedObjectives.map(obj => {
-         const effectiveWeight = obj.planner_weight !== undefined && obj.planner_weight !== null
-           ? obj.planner_weight 
-           : obj.weight;
-         
-         return {
-           ...obj,
-           effective_weight: effectiveWeight
-         };
-       });
-
-        // Store the selected objectives data for this user
-        const userId = userOrgId ? `user-${userOrgId}` : 'anonymous';
-       localStorage.setItem(`moh-selected-objectives-${userId}`, JSON.stringify(objectivesWithEffectiveWeight));
-        console.log('Saved selected objectives to localStorage:', selectedObjectives.length);
-      } catch (err) {
-        console.error('Failed to save objectives to localStorage:', err);
-      }
-    }
-  }, [selectedObjectives, userOrgId]);
-  
-  // Fetch user plans
-  const fetchUserPlans = async () => {
-    try {
-      const response = await plans.getAll();
-      if (response && response.data) {
-        setUserPlans(response.data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch plans:', error);
-    }
-  };
-  
-  // Fetch user auth info and check permissions
+  // Fetch current user and organization
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        console.log("Fetching user auth data");
         const authData = await auth.getCurrentUser();
         if (!authData.isAuthenticated) {
           navigate('/login');
@@ -121,1185 +156,731 @@ function Planning() {
         setIsUserPlanner(isPlanner(authData.userOrganizations));
         
         if (authData.userOrganizations && authData.userOrganizations.length > 0) {
-          const orgId = authData.userOrganizations[0].organization;
-          const orgName = authData.userOrganizations[0].organization_name;
-          setUserOrgId(orgId);
-          setOrgName(orgName);
+          const userOrg = authData.userOrganizations[0];
+          setUserOrgId(userOrg.organization);
           
-          // Try to load previously saved objectives for this user
+          // Fetch organization details
           try {
-            const savedObjectivesJson = localStorage.getItem(`moh-selected-objectives-${orgId}`);
-            if (savedObjectivesJson) {
-              const savedObjectives = JSON.parse(savedObjectivesJson);
-              console.log('Found saved objectives in localStorage:', savedObjectives.length);
-              
-              if (Array.isArray(savedObjectives) && savedObjectives.length > 0) {
-               // Force the saved objectives to be re-fetched from DB to get latest weights
-               const refreshObjectives = async () => {
-                 try {
-                   // Fetch fresh objectives data
-                   const response = await objectives.getAll();
-                   if (response?.data) {
-                     // Create a map of objectives by ID for easy lookup
-                     const objectivesMap = {};
-                     response.data.forEach(obj => {
-                       objectivesMap[obj.id] = obj;
-                     });
-                     
-                     // Replace saved objectives with fresh data, but keep the effective_weight
-                     const refreshedObjectives = savedObjectives.map(savedObj => {
-                       const freshObj = objectivesMap[savedObj.id];
-                       if (freshObj) {
-                         // Keep the planner's saved effective_weight, not the database's planner_weight
-                         // This ensures we use the planner's last saved weight
-                         freshObj.effective_weight = savedObj.effective_weight || 
-                                                  (savedObj.planner_weight !== undefined ? savedObj.planner_weight : savedObj.weight);
-                         return freshObj;
-                       }
-                       return savedObj;
-                     });
-                     
-                     console.log('Refreshed objectives with latest database data:');
-                     refreshedObjectives.forEach(obj => {
-                       console.log(`Objective ${obj.id} (${obj.title}): weight=${obj.weight}, planner_weight=${obj.planner_weight}, effective_weight=${obj.effective_weight}`);
-                     });
-                     
-                     setSelectedObjectives(refreshedObjectives);
-                     return;
-                   }
-                 } catch (err) {
-                   console.error('Failed to refresh objectives from database:', err);
-                 }
-                 
-                 // Fallback to just using saved objectives if refresh fails
-               // Ensure effective_weight is set based on planner_weight or weight
-               savedObjectives.forEach(obj => {
-                 if (obj.planner_weight !== undefined && obj.planner_weight !== null) {
-                   obj.effective_weight = obj.planner_weight;
-                 } else {
-                   obj.effective_weight = obj.weight;
-                 }
-               });
-                setSelectedObjectives(savedObjectives);
-               };
-               
-               await refreshObjectives();
-             } else {
-               console.log('No saved objectives found or invalid data');
-              }
-            }
-          } catch (err) {
-            console.error('Failed to load saved objectives from localStorage:', err);
+            const orgData = await organizations.getById(userOrg.organization.toString());
+            setUserOrganization(orgData);
+          } catch (orgError) {
+            console.error('Failed to fetch organization details:', orgError);
           }
         }
         
-        // Set user name from auth data
-        setUserName(authData.user?.first_name || authData.user?.username || '');
+        // Set planner name
+        const fullName = `${authData.user?.first_name || ''} ${authData.user?.last_name || ''}`.trim();
+        setPlannerName(fullName || authData.user?.username || 'Unknown Planner');
+        
+        // Set default dates (current fiscal year)
+        const currentDate = new Date();
+        const currentYear = currentDate.getFullYear();
+        const fiscalYearStart = new Date(currentYear, 6, 1); // July 1st
+        const fiscalYearEnd = new Date(currentYear + 1, 5, 30); // June 30th next year
+        
+        setFromDate(fiscalYearStart.toISOString().split('T')[0]);
+        setToDate(fiscalYearEnd.toISOString().split('T')[0]);
+        
       } catch (error) {
         console.error('Failed to fetch user data:', error);
+        setError('Failed to load user information');
       }
     };
     
     fetchUserData();
-    fetchUserPlans();
   }, [navigate]);
 
-  // Handle selecting a plan type
+  // Check permissions
+  if (!isUserPlanner && !isAdmin) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center p-8 bg-yellow-50 rounded-lg border border-yellow-200">
+          <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-yellow-800 mb-2">Access Restricted</h3>
+          <p className="text-yellow-600">{t('planning.permissions.plannerRequired')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Step handlers
   const handlePlanTypeSelect = (type: PlanType) => {
-    setPlanType(type);
-    setHasPlanTypeSelected(true);
+    setSelectedPlanType(type);
+    setCurrentStep('objective-mode');
   };
 
-  // Handle going back to plan type selection
-  const handleBackToPlanTypeSelection = () => {
-    // Only reset the planning flow state, but keep selected objectives
-    setHasObjectivesSelected(false);
-    setShowSubmitForm(false);
-    // Clear currently selected/editing items
-    setSelectedObjectiveId(null);
-    setSelectedProgram(null);
-    setSelectedInitiative(null);
-    setEditingInitiative(null);
-    setEditingMeasure(null);
-    setEditingActivity(null);
+  const handleObjectiveModeSelect = (mode: ObjectiveSelectionMode) => {
+    setObjectiveMode(mode);
+    setCurrentStep('objective-selection');
   };
 
-  // Start a new plan after viewing existing plans
-  const handleStartNewPlan = () => {
-    setShowPlansList(false);
-  };
-
-  // Navigate to plan details
-  const handleViewPlan = (planId: string) => {
-    navigate(`/plans/${planId}`);
-  };
-
-  // Handle when objectives are selected in the horizontal selector
   const handleObjectivesSelected = (objectives: StrategicObjective[]) => {
-    console.log("Objectives selected by planner:", objectives.map(obj => ({
-      id: obj.id,
-      title: obj.title,
-      weight: obj.weight,
-      planner_weight: obj.planner_weight,
-      effective_weight: obj.effective_weight || (obj.planner_weight ?? obj.weight)
-    })));
-    
-    // Store debug info about weights
-    const debugWeights: Record<string, number> = {};
-    objectives.forEach(obj => {
-      const effectiveWeight = obj.effective_weight || (obj.planner_weight ?? obj.weight);
-      debugWeights[obj.id.toString()] = effectiveWeight;
-    });
-    setPlannerWeightsDebug(debugWeights);
-    
-    console.log("Selected objectives with weights:", objectives);
-    
-   // Ensure each objective has an effective_weight property set
-   objectives.forEach(obj => {
-     if (obj.planner_weight !== undefined && obj.planner_weight !== null) {
-       obj.effective_weight = obj.planner_weight;
-     } else {
-       obj.effective_weight = obj.weight;
-     }
-     console.log(`Setting objective ${obj.id} (${obj.title}) with effective_weight=${obj.effective_weight}, planner_weight=${obj.planner_weight}, weight=${obj.weight}`);
-   });
-   
+    console.log('Objectives selected in Planning:', objectives);
     setSelectedObjectives(objectives);
     
-    // Log selected objectives details
-    objectives.forEach(obj => {
-      console.log(`Selected objective: ${obj.id} (${obj.title})`);
-      console.log(`  Original weight: ${obj.weight}`);
-      console.log(`  Planner weight: ${obj.planner_weight}`);
-      console.log(`  Effective weight: ${obj.planner_weight !== undefined && obj.planner_weight !== null ? obj.planner_weight : obj.weight}`);
-    });
+    // If only one objective, auto-select it
+    if (objectives.length === 1) {
+      setSelectedObjective(objectives[0]);
+    }
   };
 
-  // Handle proceeding to the planning stage after objectives are selected
-  const handleProceedToPlan = () => {
-    if (selectedObjectives.length === 0) {
-      setError("Please select at least one strategic objective and ensure total weight equals 100%");
-      return;
-    }
-    
-    // Set the first objective as the active one
-    if (selectedObjectives.length > 0) {
-      setSelectedObjectiveId(selectedObjectives[0].id.toString());
-    }
-    
-    // Hide plans list when proceeding to planning
-    setShowPlansList(false);
-    setHasObjectivesSelected(true);
-    
-    // Log the selected objectives
-    console.log("Proceeding to plan with objectives:", selectedObjectives);
-    selectedObjectives.forEach(obj => {
-      console.log(`Objective ${obj.id} (${obj.title}): weight=${obj.weight}, planner_weight=${obj.planner_weight}`);
-    });
+  const handleProceedToPlanning = () => {
+    console.log('Proceeding to planning with objectives:', selectedObjectives);
+    setCurrentStep('planning');
   };
 
-  // Handle selecting an objective in the planning view
-  const handleObjectiveSelect = (objective: StrategicObjective) => {
-    console.log("Selected objective in planning view:", objective?.id, objective?.title);
-    console.log(`  Original weight: ${objective?.weight}`);
-    console.log(`  Planner weight: ${objective?.planner_weight}`);
-    console.log(`  Effective weight: ${objective?.effective_weight || 'not set'} (fallback: ${objective?.planner_weight !== undefined && objective?.planner_weight !== null ? objective?.planner_weight : objective?.weight})`);
-    
-    setSelectedObjectiveId(objective.id.toString());
+  const handleSelectObjective = (objective: StrategicObjective) => {
+    console.log('Objective selected:', objective);
+    setSelectedObjective(objective);
     setSelectedProgram(null);
     setSelectedInitiative(null);
-    setEditingInitiative(null);
-    setEditingMeasure(null);
-    setEditingActivity(null);
   };
 
-  // Handle selecting a program
-  const handleProgramSelect = (program: Program) => {
+  const handleSelectProgram = (program: Program) => {
+    console.log('Program selected:', program);
     setSelectedProgram(program);
-    setSelectedObjectiveId(null);
+    setSelectedObjective(null);
     setSelectedInitiative(null);
-    setEditingInitiative(null);
-    setEditingMeasure(null);
-    setEditingActivity(null);
   };
 
-  // Handle initiative selection
-  const handleInitiativeSelect = (initiative: StrategicInitiative) => {
+  const handleSelectInitiative = (initiative: StrategicInitiative) => {
+    console.log('Initiative selected:', initiative);
     setSelectedInitiative(initiative);
-    setEditingInitiative(null);
-    setEditingMeasure(null);
-    setEditingActivity(null);
   };
 
-  // Handle initiative edit
-  const handleEditInitiative = (initiative: StrategicInitiative) => {
-    setEditingInitiative(initiative);
-    setSelectedInitiative(null);
-    setEditingMeasure(null);
-    setEditingActivity(null);
+  // Initiative CRUD handlers
+  const handleEditInitiative = (initiative: StrategicInitiative | {}) => {
+    setEditingInitiative(initiative as StrategicInitiative);
+    setShowInitiativeForm(true);
   };
 
-  // Get parent name for display
-  const getParentName = () => {
-    if (selectedObjectiveId && selectedObjectives.length > 0) {
-      const objective = selectedObjectives.find(obj => obj.id.toString() === selectedObjectiveId);
-      return objective?.title || 'Selected Objective';
-    } else if (selectedProgram) {
-      return selectedProgram.name;
-    }
-    return null;
-  };
-
-  // Get parent weight for initiatives
-  const getParentWeight = (): number => {
-    if (selectedObjectiveId && selectedObjectives.length > 0) {
-      const objective = selectedObjectives.find(obj => obj.id.toString() === selectedObjectiveId.toString());
-     // Use effective_weight if available, otherwise fall back to planner_weight or weight
-     if (objective?.effective_weight !== undefined) {
-       console.log(`Using effective_weight (${objective.effective_weight}) for objective ${objective.id}`);
-       return objective.effective_weight;
-     } else if (objective?.planner_weight !== undefined && objective?.planner_weight !== null) {
-       console.log(`Using planner_weight (${objective.planner_weight}) for objective ${objective.id}`);
-       return objective.planner_weight;
-     } else {
-       console.log(`Using weight (${objective?.weight}) for objective ${objective?.id}`);
-       return objective?.weight || 100;
-     }
-    } else if (selectedProgram) {
-      // For programs, return the parent objective's weight
-      if (selectedProgram.strategic_objective && selectedProgram.strategic_objective_id) {
-        const parentObjective = selectedObjectives.find(
-          obj => obj.id === selectedProgram.strategic_objective_id
-        );
-        if (parentObjective) {
-         // Use effective_weight if available
-         if (parentObjective.effective_weight !== undefined) {
-           return parentObjective.effective_weight;
-         } else if (parentObjective.planner_weight !== undefined && parentObjective.planner_weight !== null) {
-            return parentObjective.planner_weight;
-          }
-          return parentObjective.weight || 100;
-        }
-      }
-      return 100; // Default to 100% if no parent found
-    }
-    return 100; // Default to 100% if no parent is selected
-  };
-
-  // Handle initiative save
-  const handleInitiativeSave = async (data: Partial<StrategicInitiative>) => {
+  const handleSaveInitiative = async (data: any) => {
     try {
-      const parentType = selectedObjectiveId ? 'objective' : selectedProgram ? 'program' : '';
-      let parentId;
-
-      // Ensure we're sending the parent ID as a string, not an object
-      if (selectedObjectiveId) {
-        parentId = typeof selectedObjectiveId === 'object' ? selectedObjectiveId.id : selectedObjectiveId;
-      } else if (selectedProgram) {
-        parentId = selectedProgram.id;
-      } else {
-        parentId = '';
-      }
-      
-      // Set the proper foreign key based on parent type
-      if (parentType === 'objective') {
-        data.strategic_objective = parentId;
-        data.program = null;
-      } else if (parentType === 'program') {
-        data.strategic_objective = null;
-        data.program = parentId;
-      }
-      
-      // Set is_default=false and organization_id when created by a planner
-      data.is_default = false;
-      
-      if (!data.organization_id && userOrgId) {
-        data.organization_id = typeof userOrgId === 'object' ? userOrgId.id : userOrgId;
-      }
+      setError(null);
       
       if (editingInitiative?.id) {
-        // Update existing initiative
         await initiatives.update(editingInitiative.id, data);
       } else {
-        // Create new initiative
         await initiatives.create(data);
       }
       
-      // Force re-render of initiative list
-      refreshData();
+      // Refresh initiatives data
+      queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+      setRefreshKey(prev => prev + 1);
       
-      // Reset form state
+      setShowInitiativeForm(false);
       setEditingInitiative(null);
+      setSuccess('Initiative saved successfully');
+      setTimeout(() => setSuccess(null), 3000);
     } catch (error: any) {
       console.error('Failed to save initiative:', error);
-      throw error;
+      setError(error.message || 'Failed to save initiative');
     }
   };
 
-  // Handle initiative delete
-  const handleInitiativeDelete = async (id: string) => {
-    try {
-      await initiatives.delete(id);
-      
-      if (selectedInitiative?.id === id) {
-        setSelectedInitiative(null);
-      }
-      
-      // Force re-render of initiative list
-      refreshData();
-    } catch (error) {
-      console.error('Failed to delete initiative:', error);
-    }
+  // Performance measure CRUD handlers
+  const handleEditMeasure = (measure: PerformanceMeasure | {}) => {
+    setEditingMeasure(measure as PerformanceMeasure);
+    setShowMeasureForm(true);
   };
-  
-  // Handle performance measure edit
-  const handleEditMeasure = (measure: PerformanceMeasure) => {
-    setEditingMeasure(measure);
-    setEditingActivity(null);
-  };
-  
-  // Handle performance measure save
-  const handleMeasureSave = async (data: Partial<PerformanceMeasure>) => {
-    if (!selectedInitiative) {
-      setError('No initiative selected');
-      return;
-    }
-    
+
+  const handleSaveMeasure = async (data: any) => {
     try {
-      // Ensure initiative ID is set as a string
-      data.initiative = selectedInitiative.id.toString();
-      
-      // Set organization_id if not already set
-      if (!data.organization_id && userOrgId) {
-        data.organization_id = userOrgId;
-      }
+      setError(null);
       
       if (editingMeasure?.id) {
-        // Update existing measure
-        await performanceMeasures.update(editingMeasure.id.toString(), data);
+        await performanceMeasures.update(editingMeasure.id, data);
       } else {
-        // Create new measure
         await performanceMeasures.create(data);
       }
       
-      // Reset form state
+      // Refresh measures data
+      queryClient.invalidateQueries({ queryKey: ['performance-measures'] });
+      setRefreshKey(prev => prev + 1);
+      
+      setShowMeasureForm(false);
       setEditingMeasure(null);
-      
-      // Force refresh of initiative list to update measures
-      refreshData();
-    } catch (error) {
-      console.error('Failed to save measure:', error);
-      throw error;
+      setSuccess('Performance measure saved successfully');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error: any) {
+      console.error('Failed to save performance measure:', error);
+      setError(error.message || 'Failed to save performance measure');
     }
   };
-  
-  // Handle performance measure delete
-  const handleMeasureDelete = async (id: string) => {
+
+  // Main activity CRUD handlers
+  const handleEditActivity = (activity: MainActivity | {}) => {
+    setEditingActivity(activity as MainActivity);
+    setShowActivityForm(true);
+  };
+
+  const handleSaveActivity = async (data: any) => {
     try {
-      await performanceMeasures.delete(id);
-      
-      // Force refresh of initiative list to update measures
-      refreshData();
-    } catch (error) {
-      console.error('Failed to delete measure:', error);
-    }
-  };
-  
-  // Handle main activity edit
-  const handleEditActivity = (activity: MainActivity) => {
-    setEditingActivity(activity);
-    setEditingMeasure(null);
-  };
-  
-  // Handle main activity save
-  const handleActivitySave = async (data: Partial<MainActivity>) => {
-    if (!selectedInitiative) {
-      setError('No initiative selected');
-      return;
-    }
-    
-    try {
-      // Ensure initiative ID is set
-      data.initiative = selectedInitiative.id;
-      
-      // Set organization_id if not already set
-      if (!data.organization_id && userOrgId) {
-        data.organization_id = userOrgId;
-      }
+      setError(null);
       
       if (editingActivity?.id) {
-        // Update existing activity
         await mainActivities.update(editingActivity.id, data);
       } else {
-        // Create new activity
         await mainActivities.create(data);
       }
       
-      // Reset form state
+      // Refresh activities data
+      queryClient.invalidateQueries({ queryKey: ['main-activities'] });
+      setRefreshKey(prev => prev + 1);
+      
+      setShowActivityForm(false);
       setEditingActivity(null);
-      
-      // Force refresh of initiative list to update activities
-      refreshData();
-    } catch (error) {
-      console.error('Failed to save activity:', error);
-      throw error;
+      setSuccess('Main activity saved successfully');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error: any) {
+      console.error('Failed to save main activity:', error);
+      setError(error.message || 'Failed to save main activity');
     }
   };
-  
-  // Handle main activity delete
-  const handleActivityDelete = async (id: string) => {
+
+  // Budget handlers
+  const handleAddBudget = (activity: MainActivity, calculationType: BudgetCalculationType, activityType?: ActivityType) => {
+    setSelectedActivity(activity);
+    setBudgetCalculationType(calculationType);
+    setSelectedActivityType(activityType || null);
+    
+    if (calculationType === 'WITH_TOOL' && activityType) {
+      setShowCostingTool(true);
+    } else {
+      setShowBudgetForm(true);
+    }
+  };
+
+  const handleEditBudget = (activity: MainActivity) => {
+    setSelectedActivity(activity);
+    setEditingBudget(activity.budget || null);
+    
+    if (activity.budget?.budget_calculation_type === 'WITH_TOOL') {
+      setBudgetCalculationType('WITH_TOOL');
+      setSelectedActivityType(activity.budget.activity_type || null);
+    } else {
+      setBudgetCalculationType('WITHOUT_TOOL');
+      setSelectedActivityType(null);
+    }
+    
+    setShowBudgetForm(true);
+  };
+
+  const handleViewBudget = (activity: MainActivity) => {
+    setSelectedActivity(activity);
+    setShowBudgetDetails(true);
+  };
+
+  const handleCostingToolComplete = (costingData: any) => {
+    console.log('Costing tool completed with data:', costingData);
+    setCostingToolData(costingData);
+    setShowCostingTool(false);
+    setShowBudgetForm(true);
+  };
+
+  const handleSaveBudget = async (budgetData: any) => {
     try {
-      await mainActivities.delete(id);
-      
-      // Force refresh of initiative list to update activities
-      refreshData();
-    } catch (error) {
-      console.error('Failed to delete activity:', error);
-    }
-  };
-
-  // Open preview modal
-  const handlePreviewPlan = () => {
-    // Force data refresh before showing preview
-    refreshData();
-    // Force refresh of preview data
-    setPreviewRefreshKey(prev => prev + 1);
-    setShowPreviewModal(true);
-  };
-
-  // Export functions
-  const handleExportToExcel = async () => {
-    if (!selectedObjectives || selectedObjectives.length === 0) {
-      setError('Please select at least one objective before exporting');
-      return;
-    }
-    const data = processDataForExport(selectedObjectives, 'en');
-    await exportToExcel(
-      data, 
-      `moh-plan-${new Date().toISOString().slice(0, 10)}`, 
-      'en', 
-      {
-        organization: orgName,
-        planner: userName,
-        fromDate: fromDate,
-        toDate: toDate,
-        planType: getPlanTypeDisplay(planType)
-      }
-    );
-  };
-
-  const handleExportToPDF = async () => {
-    if (!selectedObjectives || selectedObjectives.length === 0) {
-      setError('Please select at least one objective before exporting');
-      return;
-    }
-    const data = processDataForExport(selectedObjectives, 'en');
-    await exportToPDF(
-      data, 
-      `moh-plan-${new Date().toISOString().slice(0, 10)}`, 
-      'en',
-      {
-        organization: orgName,
-        planner: userName,
-        fromDate: fromDate,
-        toDate: toDate,
-        planType: getPlanTypeDisplay(planType)
-      }
-    );
-  };
-  
-  // Helper function to get display text for plan type
-  const getPlanTypeDisplay = (type: PlanType): string => {
-    switch (type) {
-      case 'LEO/EO Plan':
-        return t('planning.types.leadExecutive');
-      case 'DESSK/TEAM plan':
-        return t('planning.types.teamDesk');
-      case 'Individual plan':
-        return t('planning.types.individual');
-      default:
-        return type;
-    }
-  };
-  
-  const handleExportToExcelAmharic = async () => {
-    if (!selectedObjectives || selectedObjectives.length === 0) {
-      setError('Please select at least one objective before exporting');
-      return;
-    }
-    const data = processDataForExport(selectedObjectives, 'am');
-    await exportToExcel(
-      data, 
-      `moh-plan-amharic-${new Date().toISOString().slice(0, 10)}`, 
-      'am',
-      {
-        organization: orgName,
-        planner: userName,
-        fromDate: fromDate,
-        toDate: toDate,
-        planType: getPlanTypeDisplay(planType)
-      }
-    );
-  };
-
-  // Handle plan submission
-  const handleSubmitPlan = async () => {
-    try {
-      setSubmitting(true);
       setError(null);
       
-      if (!userOrgId) {
-        throw new Error('User organization not found');
+      if (!selectedActivity?.id) {
+        throw new Error('No activity selected for budget');
       }
       
-      if (selectedObjectives.length === 0) {
-        throw new Error('Please select at least one strategic objective');
+      console.log('Saving budget for activity:', selectedActivity.id);
+      console.log('Budget data:', budgetData);
+      
+      // Use the custom budget update endpoint
+      const response = await mainActivities.updateBudget(selectedActivity.id, budgetData);
+      
+      console.log('Budget saved successfully:', response.data);
+      
+      // Refresh activities data to get updated budget
+      queryClient.invalidateQueries({ queryKey: ['main-activities'] });
+      setRefreshKey(prev => prev + 1);
+      
+      setShowBudgetForm(false);
+      setSelectedActivity(null);
+      setEditingBudget(null);
+      setCostingToolData(null);
+      setSuccess('Budget saved successfully');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error: any) {
+      console.error('Failed to save budget:', error);
+      setError(error.message || 'Failed to save budget');
+    }
+  };
+
+  // Plan submission handlers
+  const handleReviewPlan = () => {
+    setCurrentStep('review');
+  };
+
+  const handleSubmitPlan = async () => {
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      
+      if (!userOrganization || selectedObjectives.length === 0) {
+        throw new Error('Missing required plan data');
       }
       
       // Create plan data
       const planData = {
-        organization: Number(userOrgId),
-        planner_name: userName,
-        type: planType,
-        strategic_objective: selectedObjectives[0]?.id,
+        organization: userOrganization.id,
+        planner_name: plannerName,
+        type: selectedPlanType,
+        strategic_objective: selectedObjectives[0].id, // Primary objective
+        fiscal_year: new Date().getFullYear().toString(),
         from_date: fromDate,
         to_date: toDate,
-        fiscal_year: new Date().getFullYear().toString(),
-        status: 'DRAFT' // Ensure it's created as a draft
+        status: 'SUBMITTED'
       };
       
-      // Prepare selected objectives weights for storage
-      const selectedObjectivesWeights: Record<string, number> = {};
-      selectedObjectives.forEach(obj => {
-        if (obj && obj.id) {
-          // Use effective_weight if available, otherwise calculate from initiatives
-          const effectiveWeight = obj.effective_weight !== undefined 
-            ? obj.effective_weight 
-            : obj.initiatives?.reduce((sum, init) => sum + (Number(init.weight) || 0), 0) || 0;
-          selectedObjectivesWeights[obj.id.toString()] = effectiveWeight;
-        }
-      });
-
-      console.log("Creating new plan with data:", planData);
-      
-      // First refresh CSRF token
-      await auth.getCurrentUser();
+      console.log('Submitting plan:', planData);
       
       // Create the plan
-      let planIdToSubmit;
+      const createdPlan = await plans.create(planData);
+      console.log('Plan created:', createdPlan);
       
-      if (planId) {
-        // If we already have a plan ID, use that
-        console.log('Using existing plan ID:', planId);
-        planIdToSubmit = planId;
-      } else {
-        // Otherwise create a new plan
-        try {
-          const result = await plans.create(planData);
-          console.log("Plan creation result:", result);
+      setSuccess('Plan submitted successfully!');
       
-          if (!result || !result.id) {
-            throw new Error('Failed to create plan - no ID returned');
-          }
-          
-          planIdToSubmit = result.id.toString();
-          console.log('Plan created successfully with ID:', planIdToSubmit);
-          setPlanId(planIdToSubmit);
-        } catch (createError) {
-          console.error('Plan creation error:', createError);
-          // Extract detailed error message
-          if (createError.response?.data) {
-            const errorDetail = typeof createError.response.data === 'string' 
-              ? createError.response.data 
-              : createError.response.data.detail || JSON.stringify(createError.response.data);
-            throw new Error(`Failed to create plan: ${errorDetail}`);
-          }
-          throw new Error('Failed to create plan: ' + (createError.message || 'Unknown error'));
-        }
-      }
-      
-      // Step 2: Submit the plan
-      console.log(`Submitting plan ${planIdToSubmit} for review...`);
-      try {
-        console.log('Selected objectives weights:', selectedObjectivesWeights);
-        // Refresh CSRF token again for submission
-        await auth.getCurrentUser();
-        
-        const submitResponse = await plans.submitToEvaluator(planIdToSubmit.toString());
-        console.log("Plan submission response:", submitResponse);
-        
-        // Update UI and redirect
-        setSubmissionStatus('success');
-        setError(null);
-        alert('Plan submitted successfully!');
+      // Navigate to dashboard after short delay
+      setTimeout(() => {
         navigate('/dashboard');
-      } catch (submitError) {
-        console.error('Plan submission error:', submitError);
-        // Extract detailed error message
-        if (submitError.response?.data) {
-          const errorDetail = typeof submitError.response.data === 'string' 
-            ? submitError.response.data 
-            : submitError.response.data.detail || JSON.stringify(submitError.response.data);
-          throw new Error(`Failed to submit plan: ${errorDetail}`);
-        }
-        throw new Error('Failed to submit plan: ' + (submitError.message || 'Unknown error'));
-      }
+      }, 2000);
       
-    } catch (error) {
-      console.error('Error in plan submission process:', error);
-
-      // Reset submitting state
-      setSubmitting(false);
-      // Keep the form open for retrying
-      setShowSubmitForm(true);
-      // Reset the submission status
-      setSubmissionStatus('error');
-      
-      // Extract error message
-      let errorMessage = 'Failed to process plan';
-      if (error.response) {
-        if (typeof error.response.data === 'string') {
-          errorMessage = error.response.data;
-        } else if (error.response.data && error.response.data.detail) {
-          errorMessage = error.response.data.detail;
-        }
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      setError(errorMessage);
-      setSubmissionStatus('error');
-    } finally { 
-      if (submissionStatus === 'success') {
-        setShowSubmitForm(false);
-      }
-    }
-  };
-  
-  const handleShowSubmitForm = () => {
-    try {
-      setError(null);
-      setSubmissionStatus('idle');
-      
-      if (!userOrgId || selectedObjectives.length === 0) {
-        setError('Please select at least one strategic objective');
-        return;
-      }
-      
-      // Reset any existing plan ID to force creation of a new plan
-      setPlanId(null);
-      
-      setShowSubmitForm(true);
-    } catch (error) {
-      console.error('Failed to prepare plan for submission:', error);
-      setError(error.message || 'Failed to prepare plan for submission');
+    } catch (error: any) {
+      console.error('Failed to submit plan:', error);
+      setError(error.message || 'Failed to submit plan');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // Determine if initiatives need to be displayed
-  const showInitiatives = selectedObjectiveId || selectedProgram;
-  
-  // Determine if measures and activities need to be displayed
-  const showMeasuresAndActivities = selectedInitiative && !editingInitiative;
-  
-  // If user isn't a planner, show info message
-  if (!isUserPlanner) {
-    return (
-      <div className="p-8 bg-yellow-50 rounded-lg border border-yellow-200">
-        <div className="flex items-center mb-4">
-          <Info className="h-6 w-6 text-yellow-500 mr-2" />
-          <h2 className="text-lg font-medium text-yellow-800">View Only Mode</h2>
-        </div>
-        <p className="text-yellow-700 mb-4">
-          You are viewing this page in read-only mode. Only users with the Planner role can create and modify plans.
-        </p>
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-yellow-700 bg-yellow-100 hover:bg-yellow-200"
-        >
-          Return to Dashboard
-        </button>
-      </div>
-    );
-  }
+  // Navigation handlers
+  const handleBack = () => {
+    switch (currentStep) {
+      case 'objective-mode':
+        setCurrentStep('plan-type');
+        break;
+      case 'objective-selection':
+        setCurrentStep('objective-mode');
+        break;
+      case 'planning':
+        setCurrentStep('objective-selection');
+        break;
+      case 'review':
+        setCurrentStep('planning');
+        break;
+      case 'submit':
+        setCurrentStep('review');
+        break;
+      default:
+        navigate('/dashboard');
+    }
+  };
 
-  // If plan type has not been selected, show the plan type selector
-  if (!hasPlanTypeSelected) {
-    return <PlanTypeSelector onSelectPlanType={handlePlanTypeSelect} />;
-  }
+  const handleCancel = () => {
+    setShowInitiativeForm(false);
+    setShowMeasureForm(false);
+    setShowActivityForm(false);
+    setShowBudgetForm(false);
+    setShowBudgetDetails(false);
+    setShowCostingTool(false);
+    setEditingInitiative(null);
+    setEditingMeasure(null);
+    setEditingActivity(null);
+    setEditingBudget(null);
+    setSelectedActivity(null);
+    setCostingToolData(null);
+    setError(null);
+  };
 
-  // Show plans list or objective selector based on state
-  if (!hasObjectivesSelected && showPlansList) {
-    return (
-      <div className="space-y-6">
-        {/* Back button to plan type selection */}
-        <div className="flex items-center justify-between">
-          <button 
-            onClick={handleBackToPlanTypeSelection}
-            className="flex items-center text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeft className="h-5 w-5 mr-2" />
-            Back to Plan Type Selection
-          </button>
-          
-          <div className="bg-green-100 px-4 py-2 rounded-lg flex items-center">
-            <Building2 className="h-5 w-5 text-green-600 mr-2" />
-            <span className="text-green-800 font-medium">
-              {planType === 'LEO/EO Plan' ? 'LEO/EO Plan' : 
-               planType === 'Desk/Team Plan' ? 'Desk/Team Plan' : 'Individual Plan'}
-            </span>
-          </div>
-        </div>
+  // Render costing tools
+  const renderCostingTool = () => {
+    if (!selectedActivityType || !selectedActivity) return null;
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">Your Plans</h2>
-            <button
-              onClick={handleStartNewPlan}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center"
-            >
-              <PlusCircle className="h-4 w-4 mr-2" />
-              Create New Plan
-            </button>
-          </div>
+    const commonProps = {
+      onCalculate: handleCostingToolComplete,
+      onCancel: handleCancel,
+      initialData: costingToolData
+    };
 
-          {userPlans.length === 0 ? (
-            <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-              <p className="text-gray-500 mb-4">You don't have any plans yet</p>
-              <button
-                onClick={handleStartNewPlan}
-                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-              >
-                Create Your First Plan
-              </button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Organization
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Plan Type
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Period
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {userPlans.map((plan) => (
-                    <tr key={plan.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {plan.organization_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {plan.type_display || plan.type}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(plan.from_date).toLocaleDateString()} - {new Date(plan.to_date).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          plan.status === 'DRAFT' ? 'bg-gray-100 text-gray-800' :
-                          plan.status === 'SUBMITTED' ? 'bg-yellow-100 text-yellow-800' :
-                          plan.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {plan.status_display || plan.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <button
-                          onClick={() => handleViewPlan(plan.id)}
-                          className="text-indigo-600 hover:text-indigo-900"
-                        >
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+    switch (selectedActivityType) {
+      case 'Training':
+        return <TrainingCostingTool {...commonProps} />;
+      case 'Meeting':
+      case 'Workshop':
+        return <MeetingWorkshopCostingTool {...commonProps} />;
+      case 'Supervision':
+        return <SupervisionCostingTool {...commonProps} />;
+      case 'Printing':
+        return <PrintingCostingTool {...commonProps} />;
+      case 'Procurement':
+        return <ProcurementCostingTool {...commonProps} />;
+      default:
+        return null;
+    }
+  };
 
-          <div className="mt-6">
-            <button
-              onClick={handleStartNewPlan}
-              className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              Start Creating a New Plan
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // If objectives have not been selected and not viewing plans list, show the objective selector
-  if (!hasObjectivesSelected && !showPlansList) {
-    return (
-      <div className="space-y-6">
-        {/* Back button to plan type selection */}
-        <div className="flex items-center justify-between">
-          <button 
-            onClick={handleBackToPlanTypeSelection}
-            className="flex items-center text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeft className="h-5 w-5 mr-2" />
-            Back to Plan Type Selection
-          </button>
-          
-          <button
-            onClick={() => setShowPlansList(true)}
-            className="ml-4 flex items-center text-blue-600 hover:text-blue-800"
-          >
-            View Your Plans
-          </button>
-          
-          <div className="bg-green-100 px-4 py-2 rounded-lg flex items-center">
-            <Building2 className="h-5 w-5 text-green-600 mr-2" />
-            <span className="text-green-800 font-medium">
-              {planType === 'LEO/EO Plan' ? 'LEO/EO Plan' : 
-               planType === 'Desk/Team Plan' ? 'Desk/Team Plan' : 'Individual Plan'}
-            </span>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">
-            Select and Configure Strategic Objectives
-          </h2>
-          
-          <HorizontalObjectiveSelector
-            initialObjectives={selectedObjectives}
-            onObjectivesSelected={handleObjectivesSelected}
-            onProceed={handleProceedToPlan}
-            debugWeights={plannerWeightsDebug}
-          />
-        </div>
-      </div>
-    );
-  }
-
+  // Main render
   return (
-    <div className="space-y-6">
-      {/* Back button to objective selection */}
-      <div className="flex items-center justify-between">
-        <button 
-          onClick={() => {
-            setHasObjectivesSelected(false);
-            setShowSubmitForm(false);
-          }}
-          className="flex items-center text-gray-600 hover:text-gray-900"
-        >
-          <ArrowLeft className="h-5 w-5 mr-2" />
-          Back to Objective Selection
-        </button>
-        
-        <div className="bg-green-100 px-4 py-2 rounded-lg flex items-center">
-          <Building2 className="h-5 w-5 text-green-600 mr-2" />
-          <span className="text-green-800 font-medium">
-            {planType === 'LEO/EO Plan' ? 'LEO/EO Plan' : 
-             planType === 'Desk/Team Plan' ? 'Desk/Team Plan' : 'Individual Plan'}
-          </span>
+    <div className="px-4 py-6 sm:px-0">
+      {/* Error and Success Messages */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center text-red-700">
+          <AlertCircle className="h-5 w-5 mr-2" />
+          {error}
         </div>
-      </div>
+      )}
 
-      {/* Debug info - can be removed in production */}
-      {Object.keys(plannerWeightsDebug).length > 0 && (
-        <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
-          <strong>Debug - Planner Weights:</strong>
-          <ul>
-            {Object.entries(plannerWeightsDebug).map(([id, weight]) => (
-              <li key={id}>
-                Objective {id}: {weight}%
+      {success && (
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center text-green-700">
+          <CheckCircle className="h-5 w-5 mr-2" />
+          {success}
+        </div>
+      )}
+
+      {/* Step Navigation */}
+      <div className="mb-8">
+        <nav aria-label="Progress">
+          <ol className="flex items-center">
+            {[
+              { key: 'plan-type', label: 'Plan Type' },
+              { key: 'objective-mode', label: 'Selection Mode' },
+              { key: 'objective-selection', label: 'Objectives' },
+              { key: 'planning', label: 'Planning' },
+              { key: 'review', label: 'Review' }
+            ].map((step, index) => (
+              <li key={step.key} className={`${index !== 4 ? 'pr-8 sm:pr-20' : ''} relative`}>
+                <div className="flex items-center">
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${
+                    currentStep === step.key 
+                      ? 'border-green-600 bg-green-600 text-white' 
+                      : ['plan-type', 'objective-mode', 'objective-selection'].includes(step.key) && 
+                        ['objective-mode', 'objective-selection', 'planning', 'review'].includes(currentStep)
+                        ? 'border-green-600 bg-green-600 text-white'
+                        : 'border-gray-300 bg-white text-gray-500'
+                  }`}>
+                    <span className="text-sm font-medium">{index + 1}</span>
+                  </div>
+                  <span className={`ml-4 text-sm font-medium ${
+                    currentStep === step.key ? 'text-green-600' : 'text-gray-500'
+                  }`}>
+                    {step.label}
+                  </span>
+                </div>
+                {index !== 4 && (
+                  <div className="absolute top-4 left-4 -ml-px mt-0.5 h-full w-0.5 bg-gray-300" aria-hidden="true" />
+                )}
               </li>
             ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Planning Header */}
-      <PlanningHeader
-        organizationName={orgName}
-        fromDate={fromDate}
-        toDate={toDate}
-        plannerName={userName}
-        planType={planType}
-        onFromDateChange={setFromDate}
-        onToDateChange={setToDate}
-        onPlanTypeChange={setPlanType}
-      />
-
-      {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center">
-          <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-          <p className="text-sm text-red-600">{error}</p>
-        </div>
-      )}
-
-      {/* Debug info - can be removed in production */}
-      <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
-        <strong>Debug - Selected Objectives:</strong>
-        <ul>
-          {selectedObjectives.map((obj) => (
-            <li key={obj.id}>
-              {obj.title}: weight={obj.weight}, 
-              planner_weight={obj.planner_weight !== undefined ? obj.planner_weight : 'undefined'}, 
-              effective_weight={obj.effective_weight !== undefined ? 
-                obj.effective_weight : 
-                (obj.planner_weight !== undefined ? obj.planner_weight : obj.weight)}
-            </li>
-          ))}
-        </ul>
+          </ol>
+        </nav>
       </div>
 
-      {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Strategic Objectives Column */}
-        <div className="lg:col-span-1">
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">
-              {t('planning.selectObjective')}
-            </h2>
-            
-            <StrategicObjectivesList
-              onSelectObjective={handleObjectiveSelect}
-              selectedObjectiveId={selectedObjectiveId}
-              onSelectProgram={handleProgramSelect}
-              selectedObjectives={selectedObjectives}
-            />
-          </div>
-        </div>
+      {/* Step Content */}
+      <div className="space-y-8">
+        {/* Step 1: Plan Type Selection */}
+        {currentStep === 'plan-type' && (
+          <PlanTypeSelector onSelectPlanType={handlePlanTypeSelect} />
+        )}
 
-        {/* Initiatives Column */}
-        <div className="lg:col-span-1">
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900 mb-4 flex items-center justify-between">
-              <span>{t('planning.initiatives')}</span>
-              {getParentName() && (
-                <span className="text-sm font-normal text-gray-500">
-                  {getParentName()}
-                </span>
-              )}
-            </h2>
+        {/* Step 2: Objective Selection Mode */}
+        {currentStep === 'objective-mode' && (
+          <ObjectiveSelectionMode onSelectMode={handleObjectiveModeSelect} />
+        )}
 
-            {!showInitiatives && !editingInitiative && (
-              <div className="text-center p-8 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                <p className="mb-4">{t('planning.selectObjective')}</p>
+        {/* Step 3: Objective Selection */}
+        {currentStep === 'objective-selection' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={handleBack}
+                className="flex items-center text-gray-600 hover:text-gray-900"
+              >
+                <ArrowLeft className="h-5 w-5 mr-1" />
+                Back
+              </button>
+              <h2 className="text-xl font-semibold text-gray-900">
+                {objectiveMode === 'default' ? 'Select Default Objective' : 'Select Custom Objectives'}
+              </h2>
+              <div></div>
+            </div>
+
+            {objectiveMode === 'custom' ? (
+              <HorizontalObjectiveSelector
+                onObjectivesSelected={handleObjectivesSelected}
+                onProceed={handleProceedToPlanning}
+                initialObjectives={selectedObjectives}
+              />
+            ) : (
+              <div className="space-y-6">
+                <StrategicObjectivesList
+                  onSelectObjective={(objective) => {
+                    setSelectedObjectives([objective]);
+                    handleObjectivesSelected([objective]);
+                  }}
+                  selectedObjectiveId={selectedObjectives[0]?.id}
+                  selectedObjectives={selectedObjectives}
+                />
+                
+                {selectedObjectives.length > 0 && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleProceedToPlanning}
+                      className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center"
+                    >
+                      Proceed to Planning
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
+          </div>
+        )}
 
-            {showInitiatives && !editingInitiative && (
-              <div>
+        {/* Step 4: Planning Interface */}
+        {currentStep === 'planning' && (
+          <div className="space-y-6">
+            {/* Planning Header */}
+            <PlanningHeader
+              organizationName={userOrganization?.name || 'Unknown Organization'}
+              fromDate={fromDate}
+              toDate={toDate}
+              plannerName={plannerName}
+              planType={selectedPlanType}
+              onFromDateChange={setFromDate}
+              onToDateChange={setToDate}
+              onPlanTypeChange={setSelectedPlanType}
+            />
+
+            {/* Navigation and Actions */}
+            <div className="flex items-center justify-between">
+              <button
+                onClick={handleBack}
+                className="flex items-center text-gray-600 hover:text-gray-900"
+              >
+                <ArrowLeft className="h-5 w-5 mr-1" />
+                Back to Objectives
+              </button>
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowPreviewModal(true)}
+                  className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  Preview Plan
+                </button>
+                <button
+                  onClick={handleReviewPlan}
+                  className="flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Review & Submit
+                </button>
+              </div>
+            </div>
+
+            {/* Objectives List */}
+            <StrategicObjectivesList
+              onSelectObjective={handleSelectObjective}
+              selectedObjectiveId={selectedObjective?.id}
+              onSelectProgram={handleSelectProgram}
+              selectedObjectives={selectedObjectives}
+            />
+
+            {/* Initiatives Section */}
+            {(selectedObjective || selectedProgram) && (
+              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                 <InitiativeList
-                  parentId={selectedObjectiveId || selectedProgram?.id.toString() || ''}
-                  parentType={selectedObjectiveId ? 'objective' : 'program'}
-                  parentWeight={getParentWeight()}
+                  parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
+                  parentType={selectedObjective ? 'objective' : 'program'}
+                  parentWeight={selectedObjective?.weight || selectedProgram?.strategic_objective?.weight || 100}
                   onEditInitiative={handleEditInitiative}
-                  onSelectInitiative={handleInitiativeSelect}
-                  isNewPlan
-                  planKey={planKey}
-                  plannerWeightsDebug={plannerWeightsDebug}
+                  onSelectInitiative={handleSelectInitiative}
+                  planKey={`planning-${refreshKey}`}
                   isUserPlanner={isUserPlanner}
                   userOrgId={userOrgId}
                 />
               </div>
             )}
 
-            {editingInitiative && (
-              <div>
-                <h3 className="text-md font-medium text-gray-800 mb-4">
-                  {editingInitiative.id ? t('planning.editInitiative') : t('planning.createInitiative')}
-                </h3>
-                <InitiativeForm
-                  parentId={selectedObjectiveId || selectedProgram?.id.toString() || ''}
-                  parentType={selectedObjectiveId ? 'objective' : 'program'}
-                  parentWeight={getParentWeight()}
-                  currentTotal={0} // Handled internally by the component
-                  onSubmit={handleInitiativeSave}
-                  initialData={editingInitiative.id ? editingInitiative : undefined}
+            {/* Performance Measures Section */}
+            {selectedInitiative && (
+              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                <PerformanceMeasureList
+                  initiativeId={selectedInitiative.id}
+                  initiativeWeight={Number(selectedInitiative.weight)}
+                  onEditMeasure={handleEditMeasure}
+                  onSelectMeasure={() => {}}
+                  planKey={`planning-${refreshKey}`}
+                />
+              </div>
+            )}
+
+            {/* Main Activities Section */}
+            {selectedInitiative && (
+              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                <MainActivityList
+                  initiativeId={selectedInitiative.id}
+                  initiativeWeight={Number(selectedInitiative.weight)}
+                  onEditActivity={handleEditActivity}
+                  onSelectActivity={() => {}}
+                  onAddBudget={handleAddBudget}
+                  onEditBudget={handleEditBudget}
+                  onViewBudget={handleViewBudget}
+                  planKey={`planning-${refreshKey}`}
+                  isUserPlanner={isUserPlanner}
+                  userOrgId={userOrgId}
                 />
               </div>
             )}
           </div>
-        </div>
+        )}
 
-        {/* Performance Measures & Activities Column */}
-        <div className="lg:col-span-1">
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900 mb-4 flex items-center justify-between">
-              <span>{selectedInitiative ? selectedInitiative.name : t('planning.performanceMeasures')}</span>
-              {selectedInitiative && (
-                <span className="text-sm font-normal text-gray-500">
-                  Weight: {selectedInitiative.weight}%
-                </span>
-              )}
-            </h2>
+        {/* Step 5: Review */}
+        {currentStep === 'review' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={handleBack}
+                className="flex items-center text-gray-600 hover:text-gray-900"
+              >
+                <ArrowLeft className="h-5 w-5 mr-1" />
+                Back to Planning
+              </button>
+              <h2 className="text-xl font-semibold text-gray-900">Review Your Plan</h2>
+              <div></div>
+            </div>
 
-            {!showMeasuresAndActivities && !editingMeasure && !editingActivity && (
-              <div className="text-center p-8 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                <p className="mb-4">Select an initiative to manage performance measures and activities</p>
-              </div>
-            )}
-
-            {showMeasuresAndActivities && !editingMeasure && !editingActivity && (
-              <div className="space-y-8">
-                {/* Performance Measures */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-md font-medium text-gray-800">
-                      {t('planning.performanceMeasures')}
-                    </h3>
-                    <button
-                      onClick={() => setEditingMeasure({})}
-                      className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      <PlusCircle className="h-4 w-4 mr-1" />
-                      Add
-                    </button>
-                  </div>
-                  
-                  <PerformanceMeasureList
-                    initiativeId={selectedInitiative.id}
-                    initiativeWeight={selectedInitiative.weight}
-                    onEditMeasure={handleEditMeasure}
-                    onDeleteMeasure={handleMeasureDelete}
-                  />
-                </div>
-                
-                {/* Main Activities */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-md font-medium text-gray-800">
-                      {t('planning.mainActivities')}
-                    </h3>
-                    <button
-                      onClick={() => setEditingActivity({})}
-                      className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                    >
-                      <PlusCircle className="h-4 w-4 mr-1" />
-                      Add
-                    </button>
-                  </div>
-                  
-                  <MainActivityList
-                    initiativeId={selectedInitiative.id}
-                    onEditActivity={handleEditActivity}
-                    onDeleteActivity={handleActivityDelete}
-                  />
-                </div>
-              </div>
-            )}
-
-            {editingMeasure && (
-              <div>
-                <h3 className="text-md font-medium text-gray-800 mb-4">
-                  {editingMeasure.id ? t('planning.editPerformanceMeasure') : t('planning.createPerformanceMeasure')}
-                </h3>
-                <PerformanceMeasureForm
-                  initiativeId={selectedInitiative?.id || ''}
-                  currentTotal={0} // Handled internally by the component
-                  onSubmit={handleMeasureSave}
-                  initialData={editingMeasure.id ? editingMeasure : null}
-                  onCancel={() => setEditingMeasure(null)}
-                />
-              </div>
-            )}
-
-            {editingActivity && (
-              <div>
-                <h3 className="text-md font-medium text-gray-800 mb-4">
-                  {editingActivity.id ? t('planning.editMainActivity') : t('planning.createMainActivity')}
-                </h3>
-                <MainActivityForm
-                  initiativeId={selectedInitiative?.id || ''}
-                  currentTotal={0} // Handled internally by the component
-                  onSubmit={handleActivitySave}
-                  initialData={editingActivity.id ? editingActivity : null}
-                  onCancel={() => setEditingActivity(null)}
-                />
-              </div>
-            )}
+            <PlanReviewTable
+              objectives={selectedObjectives}
+              onSubmit={handleSubmitPlan}
+              isSubmitting={isSubmitting}
+              organizationName={userOrganization?.name || 'Unknown Organization'}
+              plannerName={plannerName}
+              fromDate={fromDate}
+              toDate={toDate}
+              planType={selectedPlanType}
+              userOrgId={userOrgId}
+            />
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Preview and Submit Section */}
-      {selectedObjectives.length > 0 && !editingInitiative && !editingMeasure && !editingActivity && (
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mt-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium text-gray-900">{showSubmitForm ? 'Plan Submission' : 'Plan Summary & Submission'}</h2>
-            <div className="flex space-x-3">
-              {!showSubmitForm && (
-                <>
-                  
-                  
-                 
-                  <button
-                    onClick={handlePreviewPlan}
-                    className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Eye className="h-4 w-4 mr-2" />
-                    Preview Plan
-                  </button>
-                  <button
-                    onClick={handleShowSubmitForm}
-                    className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
-                    disabled={submitting || submissionStatus === 'submitting'}
-                  > 
-                    <Send className="h-4 w-4 mr-2" />
-                    Submit for Review
-                  </button>
-                </>
-              )}
+      {/* Modals and Forms */}
+      
+      {/* Initiative Form Modal */}
+      {showInitiativeForm && (selectedObjective || selectedProgram) && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              {editingInitiative?.id ? 'Edit Initiative' : 'Create Initiative'}
+            </h3>
+            
+            <InitiativeForm
+              parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
+              parentType={selectedObjective ? 'objective' : 'program'}
+              parentWeight={selectedObjective?.weight || selectedProgram?.strategic_objective?.weight || 100}
+              currentTotal={0}
+              onSubmit={handleSaveInitiative}
+              onCancel={handleCancel}
+              initialData={editingInitiative}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Performance Measure Form Modal */}
+      {showMeasureForm && selectedInitiative && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              {editingMeasure?.id ? 'Edit Performance Measure' : 'Create Performance Measure'}
+            </h3>
+            
+            <PerformanceMeasureForm
+              initiativeId={selectedInitiative.id}
+              currentTotal={0}
+              onSubmit={handleSaveMeasure}
+              onCancel={handleCancel}
+              initialData={editingMeasure}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Main Activity Form Modal */}
+      {showActivityForm && selectedInitiative && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              {editingActivity?.id ? 'Edit Main Activity' : 'Create Main Activity'}
+            </h3>
+            
+            <MainActivityForm
+              initiativeId={selectedInitiative.id}
+              currentTotal={0}
+              onSubmit={handleSaveActivity}
+              onCancel={handleCancel}
+              initialData={editingActivity}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Costing Tool Modal */}
+      {showCostingTool && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            <div className="p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                {selectedActivityType} Cost Calculator
+              </h3>
+              {renderCostingTool()}
             </div>
           </div>
-          
-          {!showSubmitForm ? (
-            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-              <div className="flex items-center mb-2">
-                <Info className="h-5 w-5 text-yellow-600 mr-2" />
-                <h3 className="text-md font-medium text-yellow-800">Ready to Submit</h3>
-              </div>
-              <p className="text-sm text-yellow-700">
-                Your plan is ready to be submitted for review. You can preview your plan using the "Preview Plan" button, 
-                or export it to Excel or PDF format. When you're ready, click the "Submit for Review" button to 
-                proceed with submission. Once submitted, your plan will be locked for editing until the review
-                process is complete.
-              </p>
-            </div>
-          ) : (
-            <PlanSubmitForm
-              plan={{
-                id: planId || '',
-                organization: userOrgId ? userOrgId.toString() : '',
-                organizationName: orgName,
-                planner_name: userName,
-                type: planType,
-                strategic_objective: selectedObjectives[0]?.id.toString() || '',
-                fiscal_year: new Date().getFullYear().toString(),
-                from_date: fromDate,
-                to_date: toDate,
-                status: 'DRAFT',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              }}
-              onSubmit={handleSubmitPlan}
-              onCancel={() => setShowSubmitForm(false)}
-              isSubmitting={submitting}
+        </div>
+      )}
+
+      {/* Budget Form Modal */}
+      {showBudgetForm && selectedActivity && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              {editingBudget ? 'Edit Budget' : 'Add Budget'} - {selectedActivity.name}
+            </h3>
+            
+            <ActivityBudgetForm
+              activity={selectedActivity}
+              budgetCalculationType={budgetCalculationType}
+              activityType={selectedActivityType}
+              onSubmit={handleSaveBudget}
+              onCancel={handleCancel}
+              initialData={editingBudget || costingToolData}
+              isSubmitting={isSubmitting}
             />
-          )}
+          </div>
+        </div>
+      )}
+
+      {/* Budget Details Modal */}
+      {showBudgetDetails && selectedActivity && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <ActivityBudgetDetails
+              activity={selectedActivity}
+              onBack={handleCancel}
+              onEdit={() => {
+                setShowBudgetDetails(false);
+                handleEditBudget(selectedActivity);
+              }}
+              isReadOnly={!isUserPlanner}
+            />
+          </div>
         </div>
       )}
 
@@ -1307,16 +888,16 @@ function Planning() {
       <PlanPreviewModal
         isOpen={showPreviewModal}
         onClose={() => setShowPreviewModal(false)}
-        objectives={selectedObjectives.map(obj => ({...obj}))} // Pass deep copy to avoid reference issues
-        organizationName={orgName}
-        plannerName={userName}
+        objectives={selectedObjectives}
+        organizationName={userOrganization?.name || 'Unknown Organization'}
+        plannerName={plannerName}
         fromDate={fromDate}
         toDate={toDate}
-        planType={planType}
-        refreshKey={previewRefreshKey} // Pass refresh key to force re-render
+        planType={selectedPlanType}
+        refreshKey={refreshKey}
       />
     </div>
   );
-}
+};
 
 export default Planning;

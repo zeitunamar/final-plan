@@ -909,7 +909,7 @@ export const initiatives = {
                        parentType === 'program' ? 'program' : 
                        'subprogram';
       
-      const response = await api.get(`/strategic-initiatives/weight-summary/?${paramName}=${parentId}`);
+      const response = await api.get(`/strategic-initiatives/weight_summary/?${paramName}=${parentId}`);
       return response;
     } catch (error) {
       console.error(`Failed to fetch initiative weight summary for ${parentType} ${parentId}:`, error);
@@ -926,7 +926,7 @@ export const initiatives = {
   
   validateInitiativesWeight: async (parentId: string, parentType: string) => {
     try {
-      const response = await api.post(`/strategic-initiatives/validate-initiatives-weight/?${parentType}=${parentId}`);
+      const response = await api.post(`/strategic-initiatives/validate_initiatives_weight/?${parentType}=${parentId}`);
       return response;
     } catch (error) {
       console.error(`Failed to validate initiative weights for ${parentType} ${parentId}:`, error);
