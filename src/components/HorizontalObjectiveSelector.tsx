@@ -23,14 +23,12 @@ interface HorizontalObjectiveSelectorProps {
   onObjectivesSelected: (objectives: StrategicObjective[]) => void;
   onProceed: () => void;
   initialObjectives?: StrategicObjective[];
-  debugWeights?: Record<string, number>;
 }
 
 const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = ({
   onObjectivesSelected,
   onProceed,
-  initialObjectives = [],
-  debugWeights = {}
+  initialObjectives = []
 }) => {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
@@ -39,7 +37,7 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
   const [validationError, setValidationError] = useState<string | null>(null);
   const [totalWeight, setTotalWeight] = useState(0);
   const [isSavingWeights, setIsSavingWeights] = useState(false);
-  const [hasInitialized, setHasInitialized] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(initialObjectives.length === 0);
   
   // Fetch all objectives
   const { data: objectivesData, isLoading, error, refetch } = useQuery({
@@ -47,7 +45,6 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
     queryFn: async () => {
       try {
         const response = await objectives.getAll();
-        console.log('Objectives data fetched successfully:', response);
         return response;
       } catch (error) {
         console.error('Error fetching objectives:', error);
@@ -72,22 +69,12 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
   // Initialize objective weights from initial objectives
   useEffect(() => {
     if (initialObjectives.length > 0 && !hasInitialized) {
-      console.log('Initializing weights from initial objectives:', 
-                  initialObjectives.map(obj => ({
-                    id: obj.id,
-                    title: obj.title,
-                    weight: obj.weight,
-                    planner_weight: obj.planner_weight,
-                    effective_weight: obj.effective_weight
-                  })));
-                  
       const initialWeights: Record<string, number> = {};
       initialObjectives.forEach(obj => {
         if (obj && obj.id) {
           // Use the effective weight (planner_weight if available, otherwise weight)
           const effectiveWeight = obj.effective_weight || getEffectiveWeight(obj);
           initialWeights[obj.id] = effectiveWeight;
-          console.log(`Setting initial weight for ${obj.id} (${obj.title}): ${effectiveWeight}`);
         }
       });
       setObjectiveWeights(initialWeights);
@@ -112,13 +99,13 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
     setTotalWeight(total);
   }, [objectiveWeights, selectedObjectives]);
   
-  // Separate effect for validation and parent callback
+  // Validation and parent callback effect
   useEffect(() => {
-    if (selectedObjectives.length > 0 && Object.keys(objectiveWeights).length > 0 && hasInitialized) {
+    if (selectedObjectives.length > 0 && hasInitialized) {
       if (Math.abs(totalWeight - 100) < 0.01) { // Using a small epsilon for floating point comparison
         setValidationError(null);
         
-        // Create objectives with weights - use JSON.stringify for deep comparison
+        // Create objectives with updated weights
         const objectivesWithWeights = selectedObjectives.map(obj => {
           const userSetWeight = objectiveWeights[obj.id];
           const originalEffectiveWeight = obj.effective_weight || getEffectiveWeight(obj);
@@ -132,24 +119,18 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
           };
         });
         
-        // Only call parent callback if the data has actually changed
-        const currentDataString = JSON.stringify(objectivesWithWeights.map(obj => ({
-          id: obj.id,
-          effective_weight: obj.effective_weight
-        })));
-        
-        // Store the last sent data to prevent unnecessary calls
-        if (!HorizontalObjectiveSelector.lastSentData || HorizontalObjectiveSelector.lastSentData !== currentDataString) {
-          HorizontalObjectiveSelector.lastSentData = currentDataString;
-          onObjectivesSelected(objectivesWithWeights);
-        }
+        // Call parent callback with selected objectives only
+        onObjectivesSelected(objectivesWithWeights);
       } else {
         setValidationError(`Total weight must be 100%. Current: ${totalWeight.toFixed(2)}%`);
       }
     } else {
-      setValidationError(null);
+      if (selectedObjectives.length === 0) {
+        setValidationError(null);
+        onObjectivesSelected([]); // Pass empty array when no objectives selected
+      }
     }
-  }, [totalWeight, selectedObjectives, objectiveWeights, hasInitialized]);
+  }, [totalWeight, selectedObjectives, objectiveWeights, hasInitialized, onObjectivesSelected]);
 
   const handleSelectObjective = (objective: StrategicObjective) => {
     // Check if already selected
@@ -218,15 +199,6 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
 
   // Save all objective weights to the database before proceeding
   const handleSaveAndProceed = async () => {
-    console.log("Saving objective weights:", objectiveWeights);
-    console.log("Selected objectives:", selectedObjectives.map(obj => ({
-      id: obj.id,
-      title: obj.title,
-      weight: obj.weight,
-      planner_weight: obj.planner_weight,
-      effective_weight: obj.effective_weight || getEffectiveWeight(obj)
-    })));
-    
     if (selectedObjectives.length === 0 || Math.abs(totalWeight - 100) >= 0.01) {
       setValidationError("Please select objectives with a total weight of exactly 100% before proceeding");
       return;
@@ -251,7 +223,6 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
               planner_weight: null, // Clear the planner weight
             };
             await updateObjectiveMutation.mutateAsync(objectiveData);
-            console.log(`Cleared planner_weight for unselected objective ${objId}`);
           } catch (err) {
             console.warn(`Failed to clear planner_weight for objective ${objId}:`, err);
             // Continue with other objectives even if one fails
@@ -265,24 +236,15 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
       // Ensure we have a fresh CSRF token before making multiple API calls
       try {
         await auth.getCurrentUser();
-        const csrfToken = Cookies.get('csrftoken');
-        console.log(`Using CSRF token for objective updates: ${csrfToken ? csrfToken.substring(0, 5) + '...' : 'none'}`);
       } catch (err) {
         console.warn("Failed to refresh CSRF token:", err);
         // Continue anyway - the API client should retry if needed
       }
       
-      // Log weights before saving
-      console.log("Debug weights:", debugWeights);
-      
       // Save each objective's weight to the database
       const savePromises = selectedObjectives.map(obj => {
         const newWeight = objectiveWeights[obj.id];
         const originalEffectiveWeight = getEffectiveWeight(obj);
-        
-        console.log(`Checking if need to update objective ${obj.id} (${obj.title}):`, {
-          newWeight, originalEffectiveWeight, diff: Math.abs(originalEffectiveWeight - newWeight)
-        });
         
         // Always save the planner weight for default objectives if they're selected
         if (obj.is_default) {
@@ -296,14 +258,11 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
             is_default: obj.is_default,
           };
 
-          console.log(`Saving planner_weight ${newWeight} for default objective ${obj.id} (${obj.title})`);
           return updateObjectiveMutation.mutateAsync(objectiveData);
         }
         
         // For non-default objectives, update the weight directly
         if (!obj.is_default) {
-          console.log(`Saving weight ${newWeight} for non-default objective ${obj.id} (${obj.title})`);
-          
           const objectiveData = {
             id: obj.id,
             weight: newWeight,
@@ -480,180 +439,78 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
         )}
       </div>
 
-      {/* Horizontal Objective Selector */}
-      <h3 className="text-lg font-medium text-gray-900">Strategic Objectives</h3>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {availableObjectives.map((objective: StrategicObjective) => {
-          const isSelected = selectedObjectives.some(obj => obj.id === objective.id);
-          // Determine effective weight (planner_weight if set, otherwise weight)
-          const effectiveWeight = objective.planner_weight !== undefined && objective.planner_weight !== null
-            ? objective.planner_weight
-            : objective.weight;
-            
-          return (
-            <div 
-              key={objective.id}
-              className={`bg-white p-5 rounded-lg border-2 transition-colors cursor-pointer
-                ${isSelected ? 'border-green-500 shadow-md' : 'border-gray-200 hover:border-blue-300'}`}
-              onClick={() => {
-                if (!isSelected) handleSelectObjective(objective);
-              }}
-            >
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex items-center">
-                  <Target className="h-5 w-5 text-blue-600 mr-2 flex-shrink-0" />
-                  <h4 className="font-medium text-gray-900">{objective.title}</h4>
-                </div>
-                {objective.is_default && (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    Default
-                  </span>
-                )}
-              </div>
-              
-              <p className="text-sm text-gray-500 mb-4 line-clamp-2">
-                {objective.description || 'No description available'}
-              </p>
-              
-              {/* Original weight */}
-              <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
-                <span>Original Weight:</span>
-                <span className="font-medium">{objective.weight}%</span>
-              </div>
-
-              {/* Debug info for weights */}
-              {debugWeights && debugWeights[objective.id] && (
-                <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
-                  <span>Debug Weight:</span>
-                  <span>{debugWeights[objective.id]}%</span>
-                </div>
-              )}
-              
-              {/* Custom weight indicator if available */}
-              {objective.planner_weight !== undefined && objective.planner_weight !== null ? (
-                <div className="flex items-center justify-between text-sm text-purple-600 mb-2">
-                  <span>Custom Weight:</span>
-                  <span className="font-medium">{objective.planner_weight}%</span>
-                </div>
-              ) : objective.effective_weight !== undefined ? (
-                <div className="flex items-center justify-between text-sm text-purple-600 mb-2">
-                  <span>Effective Weight:</span>
-                  <span className="font-medium">{objective.effective_weight}%</span>
-                </div>
-              ) : null}
-              
-              {/* Weight editor (only visible when selected) */}
-              {isSelected && (
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  <div className="flex flex-col justify-between mb-2">
-                    <label className="text-sm font-medium text-gray-700 mb-1">Custom Weight (%)</label>
-                    <div className="flex items-center space-x-1 self-center">
-                     <button
-                       type="button"
-                       onClick={(e) => {
-                         e.stopPropagation();
-                         const currentWeight = objectiveWeights[objective.id] !== undefined ? 
-                                             objectiveWeights[objective.id] : 
-                                             objective.effective_weight || effectiveWeight;
-                         handleWeightChange(objective.id, Math.max(0, parseFloat((currentWeight - 1).toFixed(1))));
-                       }}
-                       className="p-1 rounded-full bg-gray-100 hover:bg-gray-200"
-                     >
-                       <Minus className="h-3 w-3" />
-                     </button>
-                     <span className="mx-1 text-sm w-12 text-center font-medium">
-                       {(objectiveWeights[objective.id] !== undefined ? 
-                        objectiveWeights[objective.id] : 
-                        objective.effective_weight || effectiveWeight).toFixed(1)}%
-                     </span>
-                     <button
-                       type="button"
-                       onClick={(e) => {
-                         e.stopPropagation();
-                         const currentWeight = objectiveWeights[objective.id] !== undefined ? 
-                                             objectiveWeights[objective.id] : 
-                                             objective.effective_weight || effectiveWeight;
-                         handleWeightChange(objective.id, parseFloat((currentWeight + 1).toFixed(1)));
-                       }}
-                       className="p-1 rounded-full bg-gray-100 hover:bg-gray-200"
-                     >
-                       <Plus className="h-3 w-3" />
-                     </button>
-                    </div>
-                  </div>
-                  
-                  <input
-                     type="number"
-                     min="0"
-                     max="100"
-                     step="0.1"
-                     value={objectiveWeights[objective.id] !== undefined ? 
-                            objectiveWeights[objective.id] : 
-                            objective.effective_weight || effectiveWeight}
-                     onChange={(e) => {
-                       e.stopPropagation();
-                       handleWeightChange(objective.id, Number(e.target.value));
-                     }}
-                     className="mt-1 block w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                     onClick={(e) => e.stopPropagation()}
-                   />
-                </div>
-              )}
-              
-              {/* Selected indicator */}
-              {isSelected && (
-                <div className="mt-3 flex justify-between items-center text-green-600">
-                  <span className="text-sm font-medium">Selected</span>
-                  <CheckCircle className="h-5 w-5" />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      
-      {/* Selected Objectives Summary */}
+      {/* Selected Objectives Section */}
       {selectedObjectives.length > 0 && (
-        <div className="mt-8 bg-gray-50 p-4 rounded-lg border border-gray-200">
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
           <h3 className="text-md font-medium text-gray-800 mb-4">Selected Objectives ({selectedObjectives.length})</h3>
           
-          <div className="space-y-2">
+          <div className="space-y-3">
             {selectedObjectives.map(obj => {
-              // Determine effective weight (from objectiveWeights or from obj.planner_weight, or fallback to obj.weight)
               const effectiveWeight = objectiveWeights[obj.id] !== undefined ? 
                                      objectiveWeights[obj.id] : 
-                                     (obj.planner_weight !== undefined && obj.planner_weight !== null) ? 
-                                     obj.planner_weight : obj.weight;
+                                     obj.effective_weight || getEffectiveWeight(obj);
               
               return (
-                <div key={obj.id} className="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-200">
-                  <div className="flex items-center">
-                    <Target className="h-5 w-5 text-blue-600 mr-2" />
-                    <span className="font-medium text-gray-900">{obj.title}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-sm">
-                      {effectiveWeight.toFixed(1)}%
-                    </span>
-                    {objectiveWeights[obj.id] !== undefined && 
-                      Math.abs(objectiveWeights[obj.id] - getEffectiveWeight(obj)) > 0.01 && (
-                      <span className="ml-2 text-xs text-purple-600">
-                        (Changed from {getEffectiveWeight(obj).toFixed(1)}%)
-                      </span>
-                    )}
+                <div key={obj.id} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex items-center flex-1">
+                      <Target className="h-5 w-5 text-blue-600 mr-2 flex-shrink-0" />
+                      <div className="flex-1">
+                        <h4 className="font-medium text-gray-900">{obj.title}</h4>
+                        <p className="text-sm text-gray-500 mt-1">{obj.description}</p>
+                        {obj.is_default && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 mt-2">
+                            Default (Original: {obj.weight}%)
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRemoveObjective(obj.id); // Remove objective
-                      }}
-                      className="ml-2 p-1 text-red-500 hover:text-red-700 rounded-full hover:bg-red-50 z-10"
+                      onClick={() => handleRemoveObjective(obj.id)}
+                      className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-full ml-2"
                       aria-label="Remove objective"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
+                  </div>
+                  
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Weight (%)
+                    </label>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentWeight = effectiveWeight;
+                          handleWeightChange(obj.id, Math.max(0, parseFloat((currentWeight - 1).toFixed(1))));
+                        }}
+                        className="p-1 rounded-full bg-gray-100 hover:bg-gray-200"
+                      >
+                        <Minus className="h-3 w-3" />
+                      </button>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={effectiveWeight}
+                        onChange={(e) => handleWeightChange(obj.id, Number(e.target.value))}
+                        className="block w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-center"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentWeight = effectiveWeight;
+                          handleWeightChange(obj.id, parseFloat((currentWeight + 1).toFixed(1)));
+                        }}
+                        className="p-1 rounded-full bg-gray-100 hover:bg-gray-200"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -661,11 +518,64 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
           </div>
         </div>
       )}
+
+      {/* Available Objectives Section */}
+      <div className="bg-white p-4 rounded-lg border border-gray-200">
+        <h3 className="text-md font-medium text-gray-800 mb-4">Available Strategic Objectives</h3>
+        
+        {unselectedObjectives.length === 0 ? (
+          <div className="text-center p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <p className="text-gray-500">
+              {selectedObjectives.length > 0 
+                ? "All objectives have been selected" 
+                : "No objectives available for selection"}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {unselectedObjectives.map((objective: StrategicObjective) => {
+              // Determine effective weight (planner_weight if set, otherwise weight)
+              const effectiveWeight = objective.planner_weight !== undefined && objective.planner_weight !== null
+                ? objective.planner_weight
+                : objective.weight;
+                
+              return (
+                <div 
+                  key={objective.id}
+                  onClick={() => handleSelectObjective(objective)}
+                  className="bg-white p-4 rounded-lg border border-gray-200 hover:border-blue-300 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-center mb-2">
+                    <Target className="h-5 w-5 text-blue-600 mr-2" />
+                    <h4 className="font-medium text-gray-900">{objective.title}</h4>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-3 line-clamp-2">{objective.description}</p>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs bg-gray-100 px-2 py-1 rounded-full text-gray-600">
+                      {objective.is_default ? 'Default' : 'Custom'} Weight: {effectiveWeight}%
+                      {objective.planner_weight !== undefined && objective.planner_weight !== null && 
+                        ` (Original: ${objective.weight}%)`
+                      }
+                    </span>
+                    <span className="text-blue-600 text-sm flex items-center">
+                      <Plus className="h-4 w-4 mr-1" /> Add
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      
+      {selectedObjectives.length === 0 && (
+        <div className="text-center p-6 bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg">
+          <Target className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-gray-500">No objectives selected yet. Please select at least one objective from below.</p>
+        </div>
+      )}
     </div>
   );
 };
-
-// Static property to track last sent data
-HorizontalObjectiveSelector.lastSentData = null;
 
 export default HorizontalObjectiveSelector;
