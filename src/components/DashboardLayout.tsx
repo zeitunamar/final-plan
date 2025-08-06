@@ -109,21 +109,6 @@ const DashboardLayout: React.FC = () => {
                   </Link>
                 )}
                 
-                {/* View-only planning link for admins */}
-                {/* {isAdmin(authState.userOrganizations) && !isPlanner(authState.userOrganizations) && (
-                  <Link
-                    to="/planning"
-                    className={`flex items-center px-3 py-2 rounded-md text-sm font-medium ${
-                      isActive('/planning')
-                        ? 'text-white bg-green-800 shadow-inner'
-                        : 'text-green-100 hover:text-white hover:bg-green-600 transition-colors'
-                    }`}
-                  >
-                    <FileSpreadsheet className="h-5 w-5 mr-2" />
-                    {t('nav.viewPlans')}
-                  </Link>
-                )} */}
-
                 {/* Evaluator Dashboard link */}
                 {isEvaluator(authState.userOrganizations) && (
                   <Link
