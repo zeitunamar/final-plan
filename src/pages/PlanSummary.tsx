@@ -329,7 +329,7 @@ const PlanSummary: React.FC = () => {
           'Q3Target': '-',
           'Q4Target': '-',
           'AnnualTarget': '-',
-          'Implementor': '-',
+          'Implementor': 'Ministry of Health',
           'BudgetRequired': '-',
           'Government': '-',
           'Partners': '-',
