@@ -33,36 +33,10 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
 }) => {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
-  // const [isUserPlanner, setIsUserPlanner] = React.useState(false);
-  // const [userOrgId, setUserOrgId] = React.useState<number | null>(null);
+  const [validationSuccess, setValidationSuccess] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   
-  // Fetch current user role and organization
-  // React.useEffect(() => {
-  //   const fetchUserData = async () => {
-  //     try {
-  //       const authData = await auth.getCurrentUser();
-  //       setIsUserPlanner(isPlanner(authData.userOrganizations));
-        
-  //       // Get the user's primary organization ID
-  //       if (authData.userOrganizations && authData.userOrganizations.length > 0) {
-  //         setUserOrgId(authData.userOrganizations[0].organization);
-  //       }
-  //     } catch (error) {
-  //       console.error('Failed to fetch user data:', error);
-  //     }
-  //   };
-    
-  //   fetchUserData();
-  // }, []);
-
-  // Fetch weight summary based on parent type
-  const { data: weightSummary, isLoading: isLoadingSummary } = useQuery({
-    queryKey: ['initiatives', 'weight-summary', parentId, parentType, planKey],
-    queryFn: () => initiatives.getWeightSummary(parentId, parentType),
-    enabled: !!parentId, // Only fetch when parentId is available
-    staleTime: 0, // Don't cache
-    cacheTime: 0 // Don't cache at all
-  });
+  console.log('InitiativeList received parentWeight:', parentWeight, 'for', parentType, parentId);
 
   // Fetch all initiatives based on parent type
   const { data: initiativesList, isLoading } = useQuery({
@@ -97,20 +71,12 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
     cacheTime: 0,  // Don't store data in cache at all
   });
 
-  const validateInitiativesMutation = useMutation({
-    mutationFn: () => initiatives.validateInitiativesWeight(parentId, parentType),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['initiatives', 'weight-summary', parentId, parentType, planKey] });
-    }
-  });
-
   // Add delete initiative mutation
   const deleteInitiativeMutation = useMutation({
     mutationFn: (initiativeId: string) => initiatives.delete(initiativeId),
     onSuccess: () => {
       // Refresh initiatives list and weight summary after deletion
       queryClient.invalidateQueries({ queryKey: ['initiatives', parentId, parentType] });
-      queryClient.invalidateQueries({ queryKey: ['initiatives', 'weight-summary', parentId, parentType, planKey] });
     }
   });
 
@@ -123,16 +89,31 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
     }
   };
 
-  const handleSelectObjective = (objective: StrategicObjective) => {
-    console.log('Objective selected:', objective);
-    // Ensure we use the effective weight (custom weight if available)
-    const objectiveWithEffectiveWeight = {
-      ...objective,
-      effective_weight: objective.effective_weight || objective.planner_weight || objective.weight
-    };
-    setSelectedObjective(objectiveWithEffectiveWeight);
-    setSelectedProgram(null);
-    setSelectedInitiative(null);
+  // Handle initiative validation
+  const handleValidateInitiatives = () => {
+    // Clear previous messages
+    setValidationSuccess(null);
+    setValidationError(null);
+    
+    console.log('Validating initiatives:', {
+      parentWeight,
+      totalWeight: total_initiatives_weight,
+      isValid: is_valid
+    });
+
+    if (is_valid) {
+      setValidationSuccess(`Initiative weights are valid (${total_initiatives_weight.toFixed(2)}% = ${parentWeight.toFixed(2)}%)`);
+      // Clear success message after 3 seconds
+      setTimeout(() => setValidationSuccess(null), 3000);
+    } else {
+      if (parentType === 'objective') {
+        setValidationError(`Initiative weights (${total_initiatives_weight.toFixed(2)}%) must equal objective weight (${parentWeight.toFixed(2)}%)`);
+      } else {
+        setValidationError(`Initiative weights (${total_initiatives_weight.toFixed(2)}%) cannot exceed ${parentType} weight (${parentWeight.toFixed(2)}%)`);
+      }
+      // Clear error message after 5 seconds
+      setTimeout(() => setValidationError(null), 5000);
+    }
   };
 
   // Calculate the effective weight based on parent objective weight
@@ -220,12 +201,27 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
             <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
               <p className="text-sm text-blue-700 flex items-center">
                 <Info className="h-4 w-4 mr-2" />
-                <strong>Important:</strong> For this objective with weight {parentWeight}%, 
+                <strong>Important:</strong> For this objective with custom weight {parentWeight}%, 
                 the total initiative weights must equal <strong>exactly {parentWeight}%</strong>.
               </p>
             </div>
           )}
         </div>
+
+        {/* Validation Messages */}
+        {validationSuccess && (
+          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md flex items-center gap-2 text-green-700">
+            <CheckCircle className="h-5 w-5" />
+            <p className="text-sm">{validationSuccess}</p>
+          </div>
+        )}
+
+        {validationError && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md flex items-center gap-2 text-red-700">
+            <AlertCircle className="h-5 w-5" />
+            <p className="text-sm">{validationError}</p>
+          </div>
+        )}
 
         <div className="flex justify-between items-center">
           <h3 className="text-sm font-medium text-gray-700">Initiatives</h3>
@@ -319,37 +315,21 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
         {isUserPlanner && (
           <div className="mt-4">
             <button
-              onClick={() => validateInitiativesMutation.mutate()}
+              onClick={handleValidateInitiatives}
               disabled={
-                validateInitiativesMutation.isPending || 
-                isLoadingSummary || 
                 !isWeightComplete ||
                 filteredInitiatives.length === 0
               }
               className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
-              {validateInitiativesMutation.isPending ? 'Validating...' : 
-               !isWeightComplete ? `Complete Weight Distribution (${remaining_weight.toFixed(1)}% remaining)` :
+              {!isWeightComplete ? `Complete Weight Distribution (${remaining_weight.toFixed(1)}% remaining)` :
                'Validate Initiatives Weight'}
             </button>
             
             {!isWeightComplete && filteredInitiatives.length > 0 && (
               <p className="mt-2 text-xs text-amber-600 text-center">
-                Add more initiatives to reach exactly {parentWeight}% total weight (custom weight)
+                Add more initiatives to reach exactly {parentWeight}% total weight
               </p>
-            )}
-            
-            {validateInitiativesMutation.isError && (
-              <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
-                {(validateInitiativesMutation.error as any)?.response?.data?.message || 
-                  'Failed to validate initiatives weight'}
-              </div>
-            )}
-            
-            {validateInitiativesMutation.isSuccess && (
-              <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md text-sm text-green-700">
-                {validateInitiativesMutation.data?.data?.message || 'Initiatives weight validated successfully'}
-              </div>
             )}
           </div>
         )}
@@ -520,7 +500,7 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
           <button 
             onClick={() => onEditInitiative({})}
             disabled={parentType === 'objective' && remaining_weight <= 0}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <PlusCircle className="h-4 w-4 mr-2" />
             {initiativesList.data.length === 0 ? 'Create First Initiative' : 
