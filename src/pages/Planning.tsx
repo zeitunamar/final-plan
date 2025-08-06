@@ -63,7 +63,6 @@ import { format } from 'date-fns';
 import PlanTypeSelector from '../components/PlanTypeSelector';
 import ObjectiveSelectionMode from '../components/ObjectiveSelectionMode';
 import HorizontalObjectiveSelector from '../components/HorizontalObjectiveSelector';
-import CustomObjectiveSelector from '../components/CustomObjectiveSelector';
 import StrategicObjectivesList from '../components/StrategicObjectivesList';
 import InitiativeList from '../components/InitiativeList';
 import InitiativeForm from '../components/InitiativeForm';
@@ -87,17 +86,11 @@ import PrintingCostingTool from '../components/PrintingCostingTool';
 import ProcurementCostingTool from '../components/ProcurementCostingTool';
 
 type PlanningStep = 
-  | 'plans-table'
   | 'plan-type' 
-  | 'objective-mode' 
   | 'objective-selection' 
-  | 'custom-objective-selection'
   | 'planning' 
-  | 'preview' 
-  | 'submit'
-  | 'review';
-
-type ObjectiveSelectionMode = 'default' | 'custom';
+  | 'review' 
+  | 'submit';
 
 // Success Modal Component
 interface SuccessModalProps {
@@ -421,13 +414,12 @@ const Planning: React.FC = () => {
   const queryClient = useQueryClient();
 
   // Core state
-  const [currentStep, setCurrentStep] = useState<PlanningStep>('plans-table');
+  const [currentStep, setCurrentStep] = useState<PlanningStep>('plan-type');
   const [selectedPlanType, setSelectedPlanType] = useState<PlanType>('LEO/EO Plan');
   const [selectedObjectives, setSelectedObjectives] = useState<StrategicObjective[]>([]);
   const [selectedObjective, setSelectedObjective] = useState<StrategicObjective | null>(null);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [selectedInitiative, setSelectedInitiative] = useState<StrategicInitiative | null>(null);
-  const [objectiveSelectionMode, setObjectiveSelectionMode] = useState<ObjectiveSelectionMode>('default');
   
   // User and organization state
   const [userOrganization, setUserOrganization] = useState<Organization | null>(null);
@@ -516,7 +508,6 @@ const Planning: React.FC = () => {
     
     checkExistingPlans();
   }, [userOrgId]);
-
   // Fetch current user and organization
   useEffect(() => {
     const fetchUserData = async () => {
@@ -578,7 +569,7 @@ const Planning: React.FC = () => {
   }
 
   // Show plans table first
-  if (showPlansTable && currentStep === 'plans-table') {
+  if (showPlansTable && currentStep === 'plan-type') {
     return (
       <div className="px-4 py-6 sm:px-0">
         <PlansTable 
@@ -603,21 +594,12 @@ const Planning: React.FC = () => {
       </div>
     );
   }
-
   // Step handlers
   const handlePlanTypeSelect = (type: PlanType) => {
     setSelectedPlanType(type);
-    setCurrentStep('objective-mode');
+    setCurrentStep('objective-selection');
   };
 
-  const handleObjectiveModeSelect = (mode: ObjectiveSelectionMode) => {
-    setObjectiveSelectionMode(mode);
-    if (mode === 'default') {
-      setCurrentStep('objective-selection');
-    } else {
-      setCurrentStep('custom-objective-selection');
-    }
-  };
 
   const handleObjectivesSelected = (objectives: StrategicObjective[]) => {
     console.log('Objectives selected in Planning:', objectives);
@@ -941,27 +923,16 @@ const Planning: React.FC = () => {
 
   const handleViewMyPlans = () => {
     setShowPlansTable(true);
-    setCurrentStep('plans-table');
+    setCurrentStep('plan-type');
   };
-
   // Navigation handlers
   const handleBack = () => {
     switch (currentStep) {
-      case 'objective-mode':
+      case 'objective-selection':
         setCurrentStep('plan-type');
         break;
-      case 'objective-selection':
-        setCurrentStep('objective-mode');
-        break;
-      case 'custom-objective-selection':
-        setCurrentStep('objective-mode');
-        break;
       case 'planning':
-        if (objectiveSelectionMode === 'custom') {
-          setCurrentStep('custom-objective-selection');
-        } else {
-          setCurrentStep('objective-selection');
-        }
+        setCurrentStep('objective-selection');
         break;
       case 'review':
         setCurrentStep('planning');
@@ -1041,7 +1012,6 @@ const Planning: React.FC = () => {
           <ol className="flex items-center">
             {[
               { key: 'plan-type', label: 'Plan Type' },
-              { key: 'objective-mode', label: 'Mode' },
               { key: 'objective-selection', label: 'Objectives' },
               { key: 'planning', label: 'Planning' },
               { key: 'review', label: 'Review' }
@@ -1051,8 +1021,8 @@ const Planning: React.FC = () => {
                   <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${
                     currentStep === step.key 
                       ? 'border-green-600 bg-green-600 text-white' 
-                      : ['plan-type', 'objective-mode', 'objective-selection', 'custom-objective-selection'].includes(step.key) && 
-                        ['objective-selection', 'custom-objective-selection', 'planning', 'review'].includes(currentStep)
+                      : ['plan-type', 'objective-selection'].includes(step.key) && 
+                        ['objective-selection', 'planning', 'review'].includes(currentStep)
                         ? 'border-green-600 bg-green-600 text-white'
                         : 'border-gray-300 bg-white text-gray-500'
                   }`}>
@@ -1080,28 +1050,8 @@ const Planning: React.FC = () => {
           <PlanTypeSelector onSelectPlanType={handlePlanTypeSelect} />
         )}
 
-        {/* Step 2: Objective Selection Mode */}
-        {currentStep === 'objective-mode' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <button
-                onClick={handleBack}
-                className="flex items-center text-gray-600 hover:text-gray-900"
-              >
-                <ArrowLeft className="h-5 w-5 mr-1" />
-                Back
-              </button>
-              <h2 className="text-xl font-semibold text-gray-900">
-                Choose Objective Selection Mode
-              </h2>
-              <div></div>
-            </div>
 
-            <ObjectiveSelectionMode onSelectMode={handleObjectiveModeSelect} />
-          </div>
-        )}
-
-        {/* Step 3: Default Objective Selection */}
+        {/* Step 2: Objective Selection */}
         {currentStep === 'objective-selection' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -1126,32 +1076,7 @@ const Planning: React.FC = () => {
           </div>
         )}
 
-        {/* Step 3b: Custom Objective Selection */}
-        {currentStep === 'custom-objective-selection' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <button
-                onClick={handleBack}
-                className="flex items-center text-gray-600 hover:text-gray-900"
-              >
-                <ArrowLeft className="h-5 w-5 mr-1" />
-                Back
-              </button>
-              <h2 className="text-xl font-semibold text-gray-900">
-                Customize Strategic Objectives
-              </h2>
-              <div></div>
-            </div>
-
-            <CustomObjectiveSelector
-              onObjectivesSelected={handleObjectivesSelected}
-              onProceed={handleProceedToPlanning}
-              initialObjectives={selectedObjectives}
-            />
-          </div>
-        )}
-
-        {/* Step 4: Planning Interface */}
+        {/* Step 3: Planning Interface */}
         {currentStep === 'planning' && (
           <div className="space-y-6">
             {/* Planning Header */}
@@ -1278,17 +1203,17 @@ const Planning: React.FC = () => {
                     }
                     
                     return (
-                      <InitiativeList
-                        parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
-                        parentType={selectedObjective ? 'objective' : 'program'}
+                  <InitiativeList
+                    parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
+                    parentType={selectedObjective ? 'objective' : 'program'}
                         parentWeight={effectiveWeight}
-                        selectedObjectiveData={selectedObjectiveData}
-                        onEditInitiative={handleEditInitiative}
-                        onSelectInitiative={handleSelectInitiative}
-                        planKey={`planning-${refreshKey}`}
-                        isUserPlanner={isUserPlanner}
-                        userOrgId={userOrgId}
-                      />
+                    selectedObjectiveData={selectedObjectiveData}
+                    onEditInitiative={handleEditInitiative}
+                    onSelectInitiative={handleSelectInitiative}
+                    planKey={`planning-${refreshKey}`}
+                    isUserPlanner={isUserPlanner}
+                    userOrgId={userOrgId}
+                  />
                     );
                   })()
                 ) : (
@@ -1369,7 +1294,7 @@ const Planning: React.FC = () => {
           </div>
         )}
 
-        {/* Step 5: Review */}
+        {/* Step 4: Review */}
         {currentStep === 'review' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -1457,16 +1382,16 @@ const Planning: React.FC = () => {
               });
               
               return (
-                <InitiativeForm
-                  parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
-                  parentType={selectedObjective ? 'objective' : 'program'}
-                  parentWeight={formParentWeight}
-                  selectedObjectiveData={selectedObjectiveData}
-                  currentTotal={0}
-                  onSubmit={handleSaveInitiative}
-                  onCancel={handleCancel}
-                  initialData={editingInitiative}
-                />
+            <InitiativeForm
+              parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
+              parentType={selectedObjective ? 'objective' : 'program'}
+              parentWeight={formParentWeight}
+              selectedObjectiveData={selectedObjectiveData}
+              currentTotal={0}
+              onSubmit={handleSaveInitiative}
+              onCancel={handleCancel}
+              initialData={editingInitiative}
+            />
               );
             })()}
           </div>
