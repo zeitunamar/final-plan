@@ -653,7 +653,9 @@ export const processDataForExport = (objectives: any[], language: string = 'en')
               'Q3Target': activity.q3_target || 0,
               'Q4Target': activity.q4_target || 0,
               'AnnualTarget': activity.annual_target || 0,
-              'Implementor': initiative.organization_name || '-',
+              'Implementor': initiative.organization_name || 
+                            (activity.organization_name) ||
+                            'Ministry of Health',
               'BudgetRequired': budgetRequired,
               'Government': government,
               'Partners': partners,
