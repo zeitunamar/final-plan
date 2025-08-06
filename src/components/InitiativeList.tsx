@@ -123,6 +123,18 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
     }
   };
 
+  const handleSelectObjective = (objective: StrategicObjective) => {
+    console.log('Objective selected:', objective);
+    // Ensure we use the effective weight (custom weight if available)
+    const objectiveWithEffectiveWeight = {
+      ...objective,
+      effective_weight: objective.effective_weight || objective.planner_weight || objective.weight
+    };
+    setSelectedObjective(objectiveWithEffectiveWeight);
+    setSelectedProgram(null);
+    setSelectedInitiative(null);
+  };
+
   // Calculate the effective weight based on parent objective weight
   const getEffectiveWeight = (weight: number): number => {
     // If parent weight is 100%, return the weight as is
