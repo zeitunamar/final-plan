@@ -688,6 +688,8 @@ const Planning: React.FC = () => {
                       // Find the selected objective in the selectedObjectives array to get the custom weight
                       selectedObjectiveData = selectedObjectives.find(obj => obj.id === selectedObjective.id);
                       
+                      console.log('Planning.tsx: Found selectedObjectiveData:', selectedObjectiveData);
+                      
                       if (selectedObjectiveData) {
                         // Use the weight from selectedObjectives array (which has custom weights)
                         effectiveWeight = selectedObjectiveData.effective_weight !== undefined 
@@ -695,6 +697,8 @@ const Planning: React.FC = () => {
                           : selectedObjectiveData.planner_weight !== undefined && selectedObjectiveData.planner_weight !== null
                             ? selectedObjectiveData.planner_weight
                             : selectedObjectiveData.weight;
+                        
+                        console.log('Planning.tsx: Using custom weight from selectedObjectives:', effectiveWeight);
                       } else {
                         // Fallback to the selected objective's weight
                         effectiveWeight = selectedObjective.effective_weight !== undefined 
@@ -702,6 +706,8 @@ const Planning: React.FC = () => {
                           : selectedObjective.planner_weight !== undefined && selectedObjective.planner_weight !== null
                             ? selectedObjective.planner_weight
                             : selectedObjective.weight;
+                        
+                        console.log('Planning.tsx: Using fallback weight from selectedObjective:', effectiveWeight);
                       }
                       
                       console.log('Planning.tsx - Weight calculation for InitiativeList:', {

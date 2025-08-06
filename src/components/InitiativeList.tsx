@@ -144,15 +144,39 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
   console.log('Initiatives data:', initiativesList.data);
 
   // Calculate weight totals from actual initiatives data
-  const filteredInitiatives = initiativesList.data.filter(i => 
+  const filteredInitiatives = (initiativesList.data || []).filter(i => 
     i.is_default || !i.organization || i.organization === userOrgId
   );
+  
+  console.log('InitiativeList: Weight calculation debug:', {
+    totalInitiatives: initiativesList.data?.length || 0,
+    filteredInitiatives: filteredInitiatives.length,
+    userOrgId,
+    parentWeight,
+    parentType
+  });
+  
+  // Log each initiative for debugging
+  (initiativesList.data || []).forEach(initiative => {
+    const isDefault = initiative.is_default;
+    const belongsToUserOrg = !initiative.organization || initiative.organization === userOrgId;
+    const isIncluded = isDefault || belongsToUserOrg;
+    
+    console.log(`Initiative "${initiative.name}": weight=${initiative.weight}%, isDefault=${isDefault}, org=${initiative.organization}, belongsToUser=${belongsToUserOrg}, included=${isIncluded}`);
+  });
   
   const total_initiatives_weight = filteredInitiatives.reduce((sum, initiative) => 
     sum + (Number(initiative.weight) || 0), 0
   );
   
   const remaining_weight = parentWeight - total_initiatives_weight;
+  
+  console.log('InitiativeList: Final weight calculation:', {
+    parentWeight,
+    total_initiatives_weight,
+    remaining_weight,
+    filteredInitiativesCount: filteredInitiatives.length
+  });
   
   // Check if exactly equal to parent weight with a small epsilon for floating point comparison
   // For objectives, weight must be exactly equal to parent weight

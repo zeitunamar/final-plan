@@ -39,6 +39,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
   const [useInitiativeFeed, setUseInitiativeFeed] = useState<boolean>(
     initialData?.initiative_feed ? true : false
   );
+  const [userOrgId, setUserOrgId] = useState<number | null>(null);
   
   // Use parentWeight directly - this should be the custom weight from Planning.tsx
   const effectiveParentWeight = parentWeight;
@@ -79,6 +80,22 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
   const selectedInitiativeFeed = watch('initiative_feed');
   const watchedWeight = watch('weight');
 
+  // Get user organization ID
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const authData = await auth.getCurrentUser();
+        if (authData.userOrganizations && authData.userOrganizations.length > 0) {
+          setUserOrgId(authData.userOrganizations[0].organization);
+        }
+      } catch (error) {
+        console.error('Failed to fetch user data:', error);
+      }
+    };
+    
+    fetchUserData();
+  }, []);
+
 
   // WORKING AUTO-FILL LOGIC FROM PREVIOUS CODE
   // When a feed is selected, update the name field
@@ -94,8 +111,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
     }
   }, [selectedInitiativeFeed, availableFeeds, useInitiativeFeed, setValue]);
 
-  // Fetch existing initiatives for weight calculation
-  // Get existing initiatives from parent component instead of API call
+  // Fetch existing initiatives for weight calculation - FILTER BY USER ORGANIZATION
   useEffect(() => {
     const fetchExistingInitiatives = async () => {
       if (!parentId) return;
@@ -113,16 +129,35 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
         }
         
         const initiativesData = response?.data || [];
-        console.log('InitiativeForm: Existing initiatives loaded:', initiativesData.length);
-        setExistingInitiatives(initiativesData);
+        
+        // CRITICAL FIX: Filter initiatives to only include:
+        // 1. Default initiatives (available to all)
+        // 2. Initiatives created by the current user's organization
+        const filteredInitiatives = initiativesData.filter(initiative => {
+          const isDefault = initiative.is_default;
+          const belongsToUserOrg = !initiative.organization || initiative.organization === userOrgId;
+          
+          console.log(`Initiative ${initiative.name}: isDefault=${isDefault}, belongsToUserOrg=${belongsToUserOrg}, org=${initiative.organization}, userOrg=${userOrgId}`);
+          
+          return isDefault || belongsToUserOrg;
+        });
+        
+        console.log('InitiativeForm: Total initiatives from API:', initiativesData.length);
+        console.log('InitiativeForm: Filtered initiatives for user org:', filteredInitiatives.length);
+        console.log('InitiativeForm: User organization ID:', userOrgId);
+        
+        setExistingInitiatives(filteredInitiatives);
       } catch (error) {
         console.error('Error fetching existing initiatives:', error);
         setExistingInitiatives([]);
       }
     };
     
-    fetchExistingInitiatives();
-  }, [parentId, parentType]);
+    // Only fetch when we have userOrgId
+    if (userOrgId !== null) {
+      fetchExistingInitiatives();
+    }
+  }, [parentId, parentType, userOrgId]);
 
   // Calculate weight constraints
   const calculateWeights = () => {
