@@ -128,37 +128,61 @@ const AdminDashboard: React.FC = () => {
       let otherFunding = 0;
       
       try {
-        // Traverse objectives → initiatives → main_activities to get budget data
+        // Check multiple possible data structures for objectives
+        let objectivesData = [];
+        
+        // Try different possible locations for objectives data
         if (plan.objectives && Array.isArray(plan.objectives)) {
-          plan.objectives.forEach((objective: any) => {
-            if (objective.initiatives && Array.isArray(objective.initiatives)) {
-              objective.initiatives.forEach((initiative: any) => {
-                if (initiative.main_activities && Array.isArray(initiative.main_activities)) {
-                  initiative.main_activities.forEach((activity: any) => {
-                    if (activity.budget) {
-                      // Get estimated cost based on calculation type
-                      const estimatedCost = activity.budget.budget_calculation_type === 'WITH_TOOL' 
-                        ? Number(activity.budget.estimated_cost_with_tool || 0)
-                        : Number(activity.budget.estimated_cost_without_tool || 0);
-                      
-                      totalBudget += estimatedCost;
-                      governmentFunding += Number(activity.budget.government_treasury || 0);
-                      sdgFunding += Number(activity.budget.sdg_funding || 0);
-                      partnersFunding += Number(activity.budget.partners_funding || 0);
-                      otherFunding += Number(activity.budget.other_funding || 0);
-                    }
-                  });
-                }
-              });
-            }
-          });
+          objectivesData = plan.objectives;
+        } else if (plan.selected_objectives_data && Array.isArray(plan.selected_objectives_data)) {
+          objectivesData = plan.selected_objectives_data;
+        } else if (plan.objectives_data && Array.isArray(plan.objectives_data)) {
+          objectivesData = plan.objectives_data;
         }
+        
+        console.log(`Processing budget for plan ${plan.id}:`, {
+          organizationName: plan.organizationName || organizationsMap[plan.organization] || `Org ${plan.organization}`,
+          objectivesCount: objectivesData.length,
+          status: plan.status
+        });
+        
+        // Traverse objectives → initiatives → main_activities to get budget data
+        objectivesData.forEach((objective: any) => {
+          if (objective.initiatives && Array.isArray(objective.initiatives)) {
+            objective.initiatives.forEach((initiative: any) => {
+              if (initiative.main_activities && Array.isArray(initiative.main_activities)) {
+                initiative.main_activities.forEach((activity: any) => {
+                  if (activity.budget) {
+                    // Get estimated cost based on calculation type
+                    const estimatedCost = activity.budget.budget_calculation_type === 'WITH_TOOL' 
+                      ? Number(activity.budget.estimated_cost_with_tool || 0)
+                      : Number(activity.budget.estimated_cost_without_tool || 0);
+                    
+                    totalBudget += estimatedCost;
+                    governmentFunding += Number(activity.budget.government_treasury || 0);
+                    sdgFunding += Number(activity.budget.sdg_funding || 0);
+                    partnersFunding += Number(activity.budget.partners_funding || 0);
+                    otherFunding += Number(activity.budget.other_funding || 0);
+                    
+                    console.log(`Activity budget found: ${activity.name} - $${estimatedCost}`);
+                  }
+                });
+              }
+            });
+          }
+        });
       } catch (error) {
         console.warn(`Error calculating budget for plan ${plan.id}:`, error);
       }
       
       const totalAvailableFunding = governmentFunding + sdgFunding + partnersFunding + otherFunding;
       const fundingGap = Math.max(0, totalBudget - totalAvailableFunding);
+      
+      console.log(`Budget calculation for plan ${plan.id}:`, {
+        totalBudget,
+        totalAvailableFunding,
+        fundingGap
+      });
       
       return {
         totalBudget,
@@ -185,7 +209,7 @@ const AdminDashboard: React.FC = () => {
         stats.totalPlans++;
       }
 
-      // Organization statistics
+      // Organization statistics - Only process SUBMITTED and APPROVED plans for budget
       const orgName = plan.organizationName || 
         organizationsMap[plan.organization] || 
         `Organization ${plan.organization}`;
@@ -209,15 +233,24 @@ const AdminDashboard: React.FC = () => {
 
       orgStats[orgName].planCount++;
 
-      // Calculate budget for this plan
-      const budgetData = calculatePlanBudget(plan);
-      orgStats[orgName].totalBudget += budgetData.totalBudget;
-      orgStats[orgName].availableFunding += budgetData.availableFunding;
-      orgStats[orgName].fundingGap += budgetData.fundingGap;
-      orgStats[orgName].governmentBudget += budgetData.governmentBudget;
-      orgStats[orgName].sdgBudget += budgetData.sdgBudget;
-      orgStats[orgName].partnersBudget += budgetData.partnersBudget;
-      orgStats[orgName].otherBudget += budgetData.otherBudget;
+      // Only calculate budget for SUBMITTED and APPROVED plans
+      if (plan.status === 'SUBMITTED' || plan.status === 'APPROVED') {
+        const budgetData = calculatePlanBudget(plan);
+        orgStats[orgName].totalBudget += budgetData.totalBudget;
+        orgStats[orgName].availableFunding += budgetData.availableFunding;
+        orgStats[orgName].fundingGap += budgetData.fundingGap;
+        orgStats[orgName].governmentBudget += budgetData.governmentBudget;
+        orgStats[orgName].sdgBudget += budgetData.sdgBudget;
+        orgStats[orgName].partnersBudget += budgetData.partnersBudget;
+        orgStats[orgName].otherBudget += budgetData.otherBudget;
+        
+        console.log(`Added budget for ${orgName}:`, {
+          planId: plan.id,
+          status: plan.status,
+          totalBudget: budgetData.totalBudget,
+          availableFunding: budgetData.availableFunding
+        });
+      }
 
       // Count plans by status per organization
       switch (plan.status) {
@@ -228,14 +261,31 @@ const AdminDashboard: React.FC = () => {
       }
     });
 
+    // Filter out organizations with no budget data (only draft/rejected plans)
+    const filteredOrgStats: Record<string, any> = {};
+    Object.entries(orgStats).forEach(([orgName, orgData]: [string, any]) => {
+      // Only include organizations that have submitted or approved plans with budget data
+      if (orgData.totalBudget > 0 || orgData.submittedPlans > 0 || orgData.approvedPlans > 0) {
+        filteredOrgStats[orgName] = orgData;
+      }
+    });
+
     // Calculate totals across all organizations
-    Object.values(orgStats).forEach((orgData: any) => {
+    Object.values(filteredOrgStats).forEach((orgData: any) => {
       stats.totalBudgetAllOrgs += orgData.totalBudget;
       stats.totalFundingAllOrgs += orgData.availableFunding;
       stats.totalGapAllOrgs += orgData.fundingGap;
     });
 
-    stats.organizationStats = orgStats;
+    stats.organizationStats = filteredOrgStats;
+    
+    console.log('Final organization stats:', {
+      totalOrgs: Object.keys(filteredOrgStats).length,
+      totalBudget: stats.totalBudgetAllOrgs,
+      totalFunding: stats.totalFundingAllOrgs,
+      organizations: Object.keys(filteredOrgStats)
+    });
+    
     return stats;
   };
 
@@ -350,9 +400,9 @@ const AdminDashboard: React.FC = () => {
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
           <div className="flex items-center justify-between mb-1">
             <h3 className="text-sm font-medium text-gray-500">Total Budget (All Orgs)</h3>
-            {/* <DollarSign className="h-5 w-5 text-purple-500" /> */}
+            <DollarSign className="h-5 w-5 text-purple-500" />
           </div>
-          <p className="text-3xl font-semibold text-purple-600">Etb {stats.totalBudgetAllOrgs.toLocaleString()}</p>
+          <p className="text-3xl font-semibold text-purple-600">ETB {stats.totalBudgetAllOrgs.toLocaleString()}</p>
           <p className="text-xs text-gray-500 mt-1">Across all organizations</p>
         </div>
 
@@ -361,7 +411,7 @@ const AdminDashboard: React.FC = () => {
             <h3 className="text-sm font-medium text-gray-500">Available Funding</h3>
             <TrendingUp className="h-5 w-5 text-green-500" />
           </div>
-          <p className="text-3xl font-semibold text-green-600">Etb  {stats.totalFundingAllOrgs.toLocaleString()}</p>
+          <p className="text-3xl font-semibold text-green-600">ETB {stats.totalFundingAllOrgs.toLocaleString()}</p>
           <p className="text-xs text-gray-500 mt-1">Total available funds</p>
         </div>
 
@@ -370,7 +420,7 @@ const AdminDashboard: React.FC = () => {
             <h3 className="text-sm font-medium text-gray-500">Funding Gap</h3>
             <AlertCircle className="h-5 w-5 text-red-500" />
           </div>
-          <p className="text-3xl font-semibold text-red-600">Etb  {stats.totalGapAllOrgs.toLocaleString()}</p>
+          <p className="text-3xl font-semibold text-red-600">ETB {stats.totalGapAllOrgs.toLocaleString()}</p>
           <p className="text-xs text-gray-500 mt-1">Total funding needed</p>
         </div>
       </div>
@@ -414,46 +464,56 @@ const AdminDashboard: React.FC = () => {
             Budget by Executives
           </h3>
           <div className="h-64">
-            <Bar
-              data={{
-                labels: Object.keys(stats.organizationStats).slice(0, 6), // Show top 6 orgs
-                datasets: [
-                  {
-                    label: 'Total Budget',
-                    data: Object.values(stats.organizationStats).slice(0, 6).map((org: any) => org.totalBudget),
-                    backgroundColor: '#8b5cf6',
-                    borderColor: '#7c3aed',
-                    borderWidth: 1
+            {Object.keys(stats.organizationStats).length > 0 ? (
+              <Bar
+                data={{
+                  labels: Object.keys(stats.organizationStats).slice(0, 8), // Show top 8 orgs with budget
+                  datasets: [
+                    {
+                      label: 'Total Budget',
+                      data: Object.values(stats.organizationStats).slice(0, 8).map((org: any) => org.totalBudget),
+                      backgroundColor: '#8b5cf6',
+                      borderColor: '#7c3aed',
+                      borderWidth: 1
+                    },
+                    {
+                      label: 'Available Funding',
+                      data: Object.values(stats.organizationStats).slice(0, 8).map((org: any) => org.availableFunding),
+                      backgroundColor: '#10b981',
+                      borderColor: '#059669',
+                      borderWidth: 1
+                    }
+                  ]
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: {
+                      position: 'top'
+                    }
                   },
-                  {
-                    label: 'Available Funding',
-                    data: Object.values(stats.organizationStats).slice(0, 6).map((org: any) => org.availableFunding),
-                    backgroundColor: '#10b981',
-                    borderColor: '#059669',
-                    borderWidth: 1
-                  }
-                ]
-              }}
-              options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                  legend: {
-                    position: 'top'
-                  }
-                },
-                scales: {
-                  y: {
-                    beginAtZero: true,
-                    ticks: {
-                      callback: function(value) {
-                        return '$' + (value as number).toLocaleString();
+                  scales: {
+                    y: {
+                      beginAtZero: true,
+                      ticks: {
+                        callback: function(value) {
+                          return 'ETB ' + (value as number).toLocaleString();
+                        }
                       }
                     }
                   }
-                }
-              }}
-            />
+                }}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-gray-500">
+                <div className="text-center">
+                  <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                  <p>No budget data available</p>
+                  <p className="text-sm">Organizations need submitted/approved plans with budget data</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -553,11 +613,20 @@ const AdminDashboard: React.FC = () => {
         <h3 className="text-lg font-medium text-gray-900 mb-6">Executives Performance</h3>
 
         {Object.keys(stats.organizationStats).length === 0 ? (
-          <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
-            <p className="text-gray-500">No organization data available</p>
+          <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+            <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Budget Data Available</h3>
+            <p className="text-gray-500 mb-2">No organizations have submitted or approved plans with budget information yet.</p>
+            <p className="text-sm text-gray-400">Budget data will appear here once organizations submit plans with complete budget details.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
+            <div className="mb-4 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <p className="flex items-center">
+                <BarChart3 className="h-4 w-4 mr-2 text-blue-500" />
+                Showing budget data for {Object.keys(stats.organizationStats).length} organization(s) with submitted or approved plans
+              </p>
+            </div>
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -612,25 +681,22 @@ const AdminDashboard: React.FC = () => {
                       {orgData.submittedPlans}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">
-                      Eth {orgData.totalBudget.toLocaleString()}
+                      ETB {orgData.totalBudget.toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
-                      Eth {orgData.availableFunding.toLocaleString()}
+                      ETB {orgData.availableFunding.toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">
-                      Eth {orgData.governmentBudget.toLocaleString()}
+                      ETB {orgData.governmentBudget.toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-purple-600">
-                      Eth {orgData.sdgBudget.toLocaleString()}
+                      ETB {orgData.sdgBudget.toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-orange-600">
-                      Eth {orgData.partnersBudget.toLocaleString()}
+                      ETB {orgData.partnersBudget.toLocaleString()}
                     </td>
-                    {/* <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-600">
-                      ${(orgData.otherBudget || 0).toLocaleString()}
-                    </td> */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">
-                      Eth {orgData.fundingGap.toLocaleString()}
+                      ETB {orgData.fundingGap.toLocaleString()}
                     </td>
                   </tr>
                 ))}
