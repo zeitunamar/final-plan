@@ -281,7 +281,7 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
           <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
             <p className="text-sm text-blue-700 flex items-center">
               <Info className="h-4 w-4 mr-2" />
-              <strong>Important:</strong> For this objective with weight {parentWeight}%, 
+              <strong>Important:</strong> For this objective with custom weight {parentWeight}%, 
               the total initiative weights must equal <strong>exactly {parentWeight}%</strong>.
             </p>
           </div>
@@ -298,7 +298,7 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
           <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-center gap-2 text-amber-700">
             <AlertCircle className="h-5 w-5" />
             <p className="text-sm">
-              Total weight must equal exactly {parentWeight}%. 
+              Total weight must equal exactly {parentWeight}% (custom weight). 
               Current total: {total_initiatives_weight.toFixed(1)}%
               (Need {remaining_weight.toFixed(1)}% more)
             </p>
@@ -310,7 +310,7 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
             <CheckCircle className="h-5 w-5" />
             <p className="text-sm">
               {parentType === 'objective' 
-                ? `Weight distribution is balanced at exactly ${parentWeight}%` 
+                ? `Weight distribution is balanced at exactly ${parentWeight}% (custom weight)` 
                 : 'Weight distribution is valid'}
             </p>
           </div>
@@ -335,7 +335,7 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
             
             {!isWeightComplete && filteredInitiatives.length > 0 && (
               <p className="mt-2 text-xs text-amber-600 text-center">
-                Add more initiatives to reach exactly {parentWeight}% total weight
+                Add more initiatives to reach exactly {parentWeight}% total weight (custom weight)
               </p>
             )}
             

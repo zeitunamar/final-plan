@@ -32,6 +32,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
   const [isLoadingFeeds, setIsLoadingFeeds] = useState(false);
   const [availableFeeds, setAvailableFeeds] = useState<any[]>([]);
   const [existingInitiatives, setExistingInitiatives] = useState<any[]>([]);
+  const [effectiveParentWeight, setEffectiveParentWeight] = useState<number>(parentWeight);
   const [useInitiativeFeed, setUseInitiativeFeed] = useState<boolean>(
     initialData?.initiative_feed ? true : false
   );
@@ -49,6 +50,12 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
   const selectedInitiativeFeed = watch('initiative_feed');
   const watchedWeight = watch('weight');
 
+  // Set the effective parent weight from the passed prop (this should be the custom weight)
+  useEffect(() => {
+    console.log('InitiativeForm received parentWeight:', parentWeight);
+    setEffectiveParentWeight(parentWeight);
+  }, [parentWeight]);
+
   // WORKING AUTO-FILL LOGIC FROM PREVIOUS CODE
   // When a feed is selected, update the name field
   useEffect(() => {
@@ -63,11 +70,13 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
     }
   }, [selectedInitiativeFeed, availableFeeds, useInitiativeFeed, setValue]);
 
-  // Fetch existing initiatives for weight calculation
+  // Fetch existing initiatives for weight calculation - disable API weight summary
   const { data: initiativesData } = useQuery({
     queryKey: ['initiatives', parentId, parentType],
     queryFn: async () => {
       if (!parentId) return { data: [] };
+      
+      console.log(`Fetching initiatives for ${parentType} ${parentId} with effective weight ${effectiveParentWeight}`);
       
       if (parentType === 'objective') {
         return await initiatives.getByObjective(parentId);
@@ -98,10 +107,17 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
       sum + (Number(init.weight) || 0), 0
     );
     
-    // Use the custom parent weight (effective weight) for calculations
-    const effectiveParentWeight = parentWeight; // This should be the custom weight passed from parent
+    // Use the effective parent weight for calculations
     const remainingWeight = effectiveParentWeight - otherInitiativesWeight;
     const maxWeight = Math.max(0, remainingWeight);
+    
+    console.log('Weight calculation in InitiativeForm:', {
+      effectiveParentWeight,
+      otherInitiativesWeight,
+      remainingWeight,
+      maxWeight,
+      currentWeight: Number(watchedWeight) || 0
+    });
     
     return {
       otherInitiativesWeight,
@@ -165,14 +181,14 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
       // Validate that the weight doesn't exceed the remaining weight
       const currentWeight = Number(data.weight) || 0;
       if (currentWeight > weights.maxWeight) {
-        setError(`Weight cannot exceed ${weights.maxWeight.toFixed(2)}%. Available weight: ${weights.remainingWeight.toFixed(2)}%`);
+        setError(`Weight cannot exceed ${weights.maxWeight.toFixed(2)}%. Available weight: ${weights.remainingWeight.toFixed(2)}% (Parent weight: ${effectiveParentWeight}%)`);
         setIsSubmitting(false);
         return;
       }
       
       // For objectives, validate that total weight doesn't exceed parent weight
-      if (parentType === 'objective' && weights.totalWithCurrent > weights.effectiveParentWeight) {
-        setError(`Total initiative weight (${weights.totalWithCurrent.toFixed(2)}%) cannot exceed objective weight (${weights.effectiveParentWeight.toFixed(2)}%)`);
+      if (parentType === 'objective' && weights.totalWithCurrent > effectiveParentWeight) {
+        setError(`Total initiative weight (${weights.totalWithCurrent.toFixed(2)}%) cannot exceed objective weight (${effectiveParentWeight.toFixed(2)}%)`);
         setIsSubmitting(false);
         return;
       }
@@ -181,9 +197,10 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
       const submissionData = {
         ...data,
         weight: Number(data.weight),
-        [parentType === 'objective' ? 'strategic_objective_id' : 'program_id']: parentId
+        [parentType === 'objective' ? 'strategic_objective' : 'program']: parentId
       };
 
+      console.log('Submitting initiative with data:', submissionData);
       await onSubmit(submissionData);
     } catch (error: any) {
       console.error('Error submitting initiative:', error);
@@ -216,7 +233,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-blue-600">Parent Weight</p>
-            <p className="font-semibold text-blue-800">{weights.effectiveParentWeight.toFixed(2)}%</p>
+            <p className="font-semibold text-blue-800">{effectiveParentWeight.toFixed(2)}%</p>
           </div>
           <div>
             <p className="text-blue-600">Other Initiatives</p>
@@ -232,8 +249,8 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
         
         {parentType === 'objective' && (
           <p className="mt-2 text-xs text-blue-600">
-            <strong>Important:</strong> For objectives, total initiative weights must equal exactly {weights.effectiveParentWeight.toFixed(2)}%
-          </p>
+            <strong>Important:</strong> For this objective with custom weight {effectiveParentWeight.toFixed(2)}%, 
+            the total initiative weights must equal <strong>exactly {effectiveParentWeight.toFixed(2)}%</strong>.
         )}
         
         {weights.remainingWeight < 0 && (
@@ -426,7 +443,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
         {/* Enhanced weight validation info */}
         <div className="mt-2 text-xs text-blue-600 bg-blue-50 p-2 rounded">
           <p><strong>Weight Distribution:</strong></p>
-          <p>• Parent {parentType} weight: {weights.effectiveParentWeight.toFixed(2)}%</p>
+          <p>• Parent {parentType} weight: {effectiveParentWeight.toFixed(2)}% (Custom Weight)</p>
           <p>• Other initiatives: {weights.otherInitiativesWeight.toFixed(2)}%</p>
           <p>• Available for this initiative: {weights.maxWeight.toFixed(2)}%</p>
           {watchedWeight && (
@@ -454,7 +471,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
             !watchedWeight || 
             Number(watchedWeight) <= 0 ||
             Number(watchedWeight) > weights.maxWeight ||
-            (parentType === 'objective' && weights.totalWithCurrent > weights.effectiveParentWeight)
+            (parentType === 'objective' && weights.totalWithCurrent > effectiveParentWeight)
           }
           className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
         >
