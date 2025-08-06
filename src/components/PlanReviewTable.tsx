@@ -198,11 +198,40 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   userOrgId = null,
   isViewOnly = false
 }) => {
+  const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
   const [processedObjectives, setProcessedObjectives] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadingProgress, setLoadingProgress] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+
+  // Fetch organizations for mapping IDs to names
+  useEffect(() => {
+    const fetchOrganizations = async () => {
+      try {
+        const response = await api.get('/organizations/');
+        const orgMap: Record<string, string> = {};
+        
+        const orgsData = response.data?.results || response.data || [];
+        if (Array.isArray(orgsData)) {
+          orgsData.forEach((org: any) => {
+            if (org && org.id) {
+              orgMap[org.id] = org.name;
+            }
+          });
+        }
+        
+        setOrganizationsMap(orgMap);
+        console.log('Organizations map created for implementer display:', orgMap);
+      } catch (error) {
+        console.error('Failed to fetch organizations for implementer mapping:', error);
+        // Set a fallback map
+        setOrganizationsMap({});
+      }
+    };
+    
+    fetchOrganizations();
+  }, []);
 
   // Enhanced data fetching for production
   const fetchCompleteData = async (objectivesList: any[]) => {
@@ -853,7 +882,13 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.q3_target || 0}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.q4_target || 0}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.annual_target || 0}</td>
-                            <td className="px-6 py-4 text-sm text-gray-900">{initiative.organization_name || '-'}</td>
+                            <td className="px-6 py-4 text-sm text-gray-900">
+                              {initiative.organization_name || 
+                               (initiative.organization && organizationsMap && organizationsMap[initiative.organization]) ||
+                               (item.organization_name) ||
+                               (item.organization && organizationsMap && organizationsMap[item.organization]) ||
+                               'Ministry of Health'}
+                            </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(budgetRequired)}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(government)}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(partners)}</td>
