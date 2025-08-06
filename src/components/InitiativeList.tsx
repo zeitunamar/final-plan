@@ -11,6 +11,7 @@ interface InitiativeListProps {
   parentId: string;
   parentType: 'objective' | 'program' | 'subprogram';
   parentWeight: number;  // The weight of the parent (objective, program, subprogram)
+  selectedObjectiveData?: any; // The objective data with custom weights
   onEditInitiative: (initiative: StrategicInitiative) => void;
   onSelectInitiative?: (initiative: StrategicInitiative) => void;
   isNewPlan?: boolean;
@@ -23,6 +24,7 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
   parentId,
   parentType,
   parentWeight,
+  selectedObjectiveData,
   onEditInitiative,
   onSelectInitiative,
   isNewPlan = false,
@@ -36,7 +38,13 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
   const [validationSuccess, setValidationSuccess] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   
-  console.log('InitiativeList received parentWeight:', parentWeight, 'for', parentType, parentId);
+  console.log('InitiativeList received:', {
+    parentWeight,
+    parentType,
+    parentId,
+    selectedObjectiveData: selectedObjectiveData ? 'provided' : 'not provided',
+    customWeight: selectedObjectiveData?.effective_weight || selectedObjectiveData?.planner_weight
+  });
 
   // Fetch all initiatives based on parent type
   const { data: initiativesList, isLoading } = useQuery({
@@ -501,7 +509,7 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
       {isUserPlanner && (
         <div className="mt-4 text-center">
           <button 
-            onClick={() => onEditInitiative({})}
+            onClick={() => onEditInitiative({ parentWeight, selectedObjectiveData })}
             disabled={parentType === 'objective' && remaining_weight <= 0.01}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -513,7 +521,7 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
           
           {parentType === 'objective' && remaining_weight <= 0.01 && total_initiatives_weight < parentWeight && (
             <p className="mt-2 text-xs text-amber-600">
-              Cannot add more initiatives. Total weight must equal exactly {parentWeight}%.
+              Cannot add more initiatives. Total weight must equal exactly {parentWeight.toFixed(2)}% (custom weight).
             </p>
           )}
         </div>

@@ -243,6 +243,18 @@ const Planning: React.FC = () => {
 
   // Initiative CRUD handlers
   const handleEditInitiative = (initiative: StrategicInitiative | {}) => {
+    // Pass the custom weight data when editing/creating initiatives
+    const initiativeWithWeight = {
+      ...initiative,
+      parentWeight: selectedObjective ? (
+        selectedObjectives.find(obj => obj.id === selectedObjective.id)?.effective_weight ||
+        selectedObjectives.find(obj => obj.id === selectedObjective.id)?.planner_weight ||
+        selectedObjective.weight
+      ) : selectedProgram?.strategic_objective?.weight || 100,
+      selectedObjectiveData: selectedObjective ? 
+        selectedObjectives.find(obj => obj.id === selectedObjective.id) : null
+    };
+    
     setEditingInitiative(initiative as StrategicInitiative);
     setShowInitiativeForm(true);
   };
@@ -670,27 +682,55 @@ const Planning: React.FC = () => {
                   (() => {
                     // Calculate the effective weight to pass to InitiativeList
                     let effectiveWeight = 100; // Default fallback
+                    let selectedObjectiveData = null;
                     
                     if (selectedObjective) {
-                      // For selected objectives, use the effective weight hierarchy
-                      effectiveWeight = selectedObjective.effective_weight !== undefined 
-                        ? selectedObjective.effective_weight
-                        : selectedObjective.planner_weight !== undefined && selectedObjective.planner_weight !== null
-                          ? selectedObjective.planner_weight
-                          : selectedObjective.weight;
+                      // Find the selected objective in the selectedObjectives array to get the custom weight
+                      selectedObjectiveData = selectedObjectives.find(obj => obj.id === selectedObjective.id);
                       
-                      console.log('Planning.tsx - Passing weight to InitiativeList:', {
+                      if (selectedObjectiveData) {
+                        // Use the weight from selectedObjectives array (which has custom weights)
+                        effectiveWeight = selectedObjectiveData.effective_weight !== undefined 
+                          ? selectedObjectiveData.effective_weight
+                          : selectedObjectiveData.planner_weight !== undefined && selectedObjectiveData.planner_weight !== null
+                            ? selectedObjectiveData.planner_weight
+                            : selectedObjectiveData.weight;
+                      } else {
+                        // Fallback to the selected objective's weight
+                        effectiveWeight = selectedObjective.effective_weight !== undefined 
+                          ? selectedObjective.effective_weight
+                          : selectedObjective.planner_weight !== undefined && selectedObjective.planner_weight !== null
+                            ? selectedObjective.planner_weight
+                            : selectedObjective.weight;
+                      }
+                      
+                      console.log('Planning.tsx - Weight calculation for InitiativeList:', {
                         objectiveId: selectedObjective.id,
                         objectiveTitle: selectedObjective.title,
+                        selectedObjectiveData: selectedObjectiveData ? 'found' : 'not found',
                         originalWeight: selectedObjective.weight,
                         plannerWeight: selectedObjective.planner_weight,
-                        effectiveWeight: selectedObjective.effective_weight,
-                        finalWeight: effectiveWeight
+                        effectiveWeightFromSelected: selectedObjectiveData?.effective_weight,
+                        finalEffectiveWeight: effectiveWeight
                       });
                     } else if (selectedProgram) {
-                      effectiveWeight = selectedProgram.strategic_objective?.effective_weight ||
-                                      selectedProgram.strategic_objective?.planner_weight ||
-                                      selectedProgram.strategic_objective?.weight || 100;
+                      // For programs, also check if the parent objective is in selectedObjectives
+                      const parentObjective = selectedObjectives.find(obj => 
+                        obj.id === selectedProgram.strategic_objective_id || 
+                        obj.id === selectedProgram.strategic_objective?.id
+                      );
+                      
+                      if (parentObjective) {
+                        effectiveWeight = parentObjective.effective_weight !== undefined 
+                          ? parentObjective.effective_weight
+                          : parentObjective.planner_weight !== undefined && parentObjective.planner_weight !== null
+                            ? parentObjective.planner_weight
+                            : parentObjective.weight;
+                      } else {
+                        effectiveWeight = selectedProgram.strategic_objective?.effective_weight ||
+                                        selectedProgram.strategic_objective?.planner_weight ||
+                                        selectedProgram.strategic_objective?.weight || 100;
+                      }
                     }
                     
                     return (
@@ -698,6 +738,7 @@ const Planning: React.FC = () => {
                     parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
                     parentType={selectedObjective ? 'objective' : 'program'}
                         parentWeight={effectiveWeight}
+                    selectedObjectiveData={selectedObjectiveData}
                     onEditInitiative={handleEditInitiative}
                     onSelectInitiative={handleSelectInitiative}
                     planKey={`planning-${refreshKey}`}
@@ -809,15 +850,66 @@ const Planning: React.FC = () => {
               {editingInitiative?.id ? 'Edit Initiative' : 'Create Initiative'}
             </h3>
             
+            {(() => {
+              // Calculate the effective weight for the form
+              let formParentWeight = 100;
+              let selectedObjectiveData = null;
+              
+              if (selectedObjective) {
+                // Find the selected objective in the selectedObjectives array
+                selectedObjectiveData = selectedObjectives.find(obj => obj.id === selectedObjective.id);
+                
+                if (selectedObjectiveData) {
+                  formParentWeight = selectedObjectiveData.effective_weight !== undefined 
+                    ? selectedObjectiveData.effective_weight
+                    : selectedObjectiveData.planner_weight !== undefined && selectedObjectiveData.planner_weight !== null
+                      ? selectedObjectiveData.planner_weight
+                      : selectedObjectiveData.weight;
+                } else {
+                  formParentWeight = selectedObjective.effective_weight !== undefined 
+                    ? selectedObjective.effective_weight
+                    : selectedObjective.planner_weight !== undefined && selectedObjective.planner_weight !== null
+                      ? selectedObjective.planner_weight
+                      : selectedObjective.weight;
+                }
+              } else if (selectedProgram) {
+                const parentObjective = selectedObjectives.find(obj => 
+                  obj.id === selectedProgram.strategic_objective_id || 
+                  obj.id === selectedProgram.strategic_objective?.id
+                );
+                
+                if (parentObjective) {
+                  formParentWeight = parentObjective.effective_weight !== undefined 
+                    ? parentObjective.effective_weight
+                    : parentObjective.planner_weight !== undefined && parentObjective.planner_weight !== null
+                      ? parentObjective.planner_weight
+                      : parentObjective.weight;
+                } else {
+                  formParentWeight = selectedProgram.strategic_objective?.weight || 100;
+                }
+              }
+              
+              console.log('InitiativeForm Modal - Weight calculation:', {
+                selectedObjective: selectedObjective?.title,
+                selectedProgram: selectedProgram?.name,
+                selectedObjectiveData: selectedObjectiveData ? 'found' : 'not found',
+                formParentWeight,
+                originalWeight: selectedObjective?.weight || selectedProgram?.strategic_objective?.weight
+              });
+              
+              return (
             <InitiativeForm
               parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
               parentType={selectedObjective ? 'objective' : 'program'}
-              parentWeight={selectedObjective?.weight || selectedProgram?.strategic_objective?.weight || 100}
+              parentWeight={formParentWeight}
+              selectedObjectiveData={selectedObjectiveData}
               currentTotal={0}
               onSubmit={handleSaveInitiative}
               onCancel={handleCancel}
               initialData={editingInitiative}
             />
+              );
+            })()}
           </div>
         </div>
       )}

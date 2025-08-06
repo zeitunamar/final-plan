@@ -9,6 +9,8 @@ interface InitiativeFormProps {
   parentId: string;
   parentType: 'objective' | 'program';
   parentWeight: number;
+  selectedObjectiveData?: any;
+  selectedObjectiveData?: any; // The objective data with custom weights
   currentTotal: number;
   onSubmit: (data: any) => Promise<void>;
   onCancel: () => void;
@@ -19,6 +21,8 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
   parentId,
   parentType,
   parentWeight,
+  selectedObjectiveData,
+  selectedObjectiveData,
   currentTotal,
   onSubmit,
   onCancel,
@@ -36,8 +40,31 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
     initialData?.initiative_feed ? true : false
   );
   
-  // Use parentWeight directly as the effective parent weight
+  // Use parentWeight directly - this should be the custom weight from Planning.tsx
   const effectiveParentWeight = parentWeight;
+  
+  console.log('InitiativeForm initialized with:', {
+    parentId,
+    parentType,
+    parentWeight,
+    effectiveParentWeight,
+    selectedObjectiveData: selectedObjectiveData ? {
+      id: selectedObjectiveData.id,
+      title: selectedObjectiveData.title,
+      weight: selectedObjectiveData.weight,
+      planner_weight: selectedObjectiveData.planner_weight,
+      effective_weight: selectedObjectiveData.effective_weight
+    } : 'not provided'
+  });
+  
+  console.log('InitiativeForm received:', {
+    parentWeight,
+    parentType,
+    parentId,
+    selectedObjectiveData: selectedObjectiveData ? 'provided' : 'not provided',
+    effectiveParentWeight,
+    customWeight: selectedObjectiveData?.effective_weight || selectedObjectiveData?.planner_weight
+  });
 
   const { register, handleSubmit, watch, setValue, reset, control, formState: { errors } } = useForm<any>({
     defaultValues: {
@@ -52,7 +79,6 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
   const selectedInitiativeFeed = watch('initiative_feed');
   const watchedWeight = watch('weight');
 
-  console.log('InitiativeForm received parentWeight:', parentWeight, 'for', parentType, parentId);
 
   // WORKING AUTO-FILL LOGIC FROM PREVIOUS CODE
   // When a feed is selected, update the name field
@@ -68,13 +94,13 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
     }
   }, [selectedInitiativeFeed, availableFeeds, useInitiativeFeed, setValue]);
 
-  // Fetch existing initiatives for weight calculation - disable API weight summary
+  // Fetch existing initiatives for weight calculation
   const { data: initiativesData } = useQuery({
     queryKey: ['initiatives', parentId, parentType],
     queryFn: async () => {
       if (!parentId) return { data: [] };
       
-      console.log(`Fetching initiatives for ${parentType} ${parentId} with effective weight ${effectiveParentWeight}`);
+      console.log(`InitiativeForm: Fetching existing initiatives for ${parentType} ${parentId}`);
       
       if (parentType === 'objective') {
         return await initiatives.getByObjective(parentId);
@@ -89,6 +115,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
   // Update existing initiatives when data changes
   useEffect(() => {
     if (initiativesData?.data) {
+      console.log('InitiativeForm: Existing initiatives loaded:', initiativesData.data.length);
       setExistingInitiatives(initiativesData.data);
     }
   }, [initiativesData]);
@@ -105,12 +132,12 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
       sum + (Number(init.weight) || 0), 0
     );
     
-    // Use the effective parent weight for calculations
-    const remainingWeight = parentWeight - otherInitiativesWeight;
+    // Use the effective parent weight (custom weight) for calculations
+    const remainingWeight = effectiveParentWeight - otherInitiativesWeight;
     const maxWeight = Math.max(0, remainingWeight);
     
-    console.log('Weight calculation in InitiativeForm:', {
-      parentWeight,
+    console.log('InitiativeForm: Weight calculation:', {
+      effectiveParentWeight,
       otherInitiativesWeight,
       remainingWeight,
       maxWeight,
@@ -122,7 +149,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
       remainingWeight,
       maxWeight,
       totalWithCurrent: otherInitiativesWeight + (Number(watchedWeight) || 0),
-      parentWeight
+      parentWeight: effectiveParentWeight
     };
   };
 
@@ -179,14 +206,14 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
       // Validate that the weight doesn't exceed the remaining weight
       const currentWeight = Number(data.weight) || 0;
       if (currentWeight > weights.maxWeight) {
-        setError(`Weight cannot exceed ${weights.maxWeight.toFixed(2)}%. Available weight: ${weights.remainingWeight.toFixed(2)}% (Parent weight: ${parentWeight}%)`);
+        setError(`Weight cannot exceed ${weights.maxWeight.toFixed(2)}%. Available weight: ${weights.remainingWeight.toFixed(2)}% (Custom parent weight: ${effectiveParentWeight}%)`);
         setIsSubmitting(false);
         return;
       }
       
       // For objectives, validate that total weight doesn't exceed parent weight
-      if (parentType === 'objective' && weights.totalWithCurrent > parentWeight) {
-        setError(`Total initiative weight (${weights.totalWithCurrent.toFixed(2)}%) cannot exceed objective weight (${parentWeight.toFixed(2)}%)`);
+      if (parentType === 'objective' && weights.totalWithCurrent > effectiveParentWeight) {
+        setError(`Total initiative weight (${weights.totalWithCurrent.toFixed(2)}%) cannot exceed custom objective weight (${effectiveParentWeight.toFixed(2)}%)`);
         setIsSubmitting(false);
         return;
       }
@@ -198,7 +225,8 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
         [parentType === 'objective' ? 'strategic_objective' : 'program']: parentId
       };
 
-      console.log('Submitting initiative with data:', submissionData);
+      console.log('InitiativeForm: Submitting initiative with data:', submissionData);
+      console.log('InitiativeForm: Weight validation passed with custom parent weight:', effectiveParentWeight);
       await onSubmit(submissionData);
     } catch (error: any) {
       console.error('Error submitting initiative:', error);
