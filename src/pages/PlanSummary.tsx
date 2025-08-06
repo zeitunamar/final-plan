@@ -30,6 +30,9 @@ const PlanSummary: React.FC = () => {
   const [retryCount, setRetryCount] = useState(0);
   const [processedPlanData, setProcessedPlanData] = useState<any>(null);
 
+  // Add organizations mapping for implementer display
+  const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
+
   // Query hooks
   const { data: organizationsData } = useQuery({
     queryKey: ['organizations'],
@@ -143,6 +146,23 @@ const PlanSummary: React.FC = () => {
   }, [navigate]);
 
   useEffect(() => {
+    // Create organizations mapping
+    if (organizationsData) {
+      const orgMap: Record<string, string> = {};
+      
+      const orgsArray = Array.isArray(organizationsData) ? organizationsData : organizationsData.data || [];
+      if (Array.isArray(orgsArray)) {
+        orgsArray.forEach((org: any) => {
+          if (org && org.id) {
+            orgMap[org.id] = org.name;
+          }
+        });
+      }
+      
+      setOrganizationsMap(orgMap);
+      console.log('Organizations map created for plan summary:', orgMap);
+    }
+    
     if (planData) {
       setProcessedPlanData(planData);
       
@@ -343,7 +363,11 @@ const PlanSummary: React.FC = () => {
               'Q3Target': '-',
               'Q4Target': '-',
               'AnnualTarget': '-',
-              'Implementor': initiative.organization_name || '-',
+              'Implementor': initiative.organization_name || 
+                            (initiative.organization && organizationsMap && organizationsMap[initiative.organization]) ||
+                            (item.organization_name) ||
+                            (item.organization && organizationsMap && organizationsMap[item.organization]) ||
+                            'Ministry of Health',
               'BudgetRequired': '-',
               'Government': '-',
               'Partners': '-',
@@ -403,7 +427,9 @@ const PlanSummary: React.FC = () => {
                 'Q3Target': item.q3_target || 0,
                 'Q4Target': item.q4_target || 0,
                 'AnnualTarget': item.annual_target || 0,
-                'Implementor': initiative.organization_name || '-',
+                'Implementor': initiative.organization_name || 
+                              (initiative.organization && organizationsMap && organizationsMap[initiative.organization]) ||
+                              'Ministry of Health',
                 'BudgetRequired': budgetRequired,
                 'Government': government,
                 'Partners': partners,
