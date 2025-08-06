@@ -667,16 +667,45 @@ const Planning: React.FC = () => {
                   Strategic Initiatives
                 </h3>
                 {(selectedObjective || selectedProgram) ? (
+                  (() => {
+                    // Calculate the effective weight to pass to InitiativeList
+                    let effectiveWeight = 100; // Default fallback
+                    
+                    if (selectedObjective) {
+                      // For selected objectives, use the effective weight hierarchy
+                      effectiveWeight = selectedObjective.effective_weight !== undefined 
+                        ? selectedObjective.effective_weight
+                        : selectedObjective.planner_weight !== undefined && selectedObjective.planner_weight !== null
+                          ? selectedObjective.planner_weight
+                          : selectedObjective.weight;
+                      
+                      console.log('Planning.tsx - Passing weight to InitiativeList:', {
+                        objectiveId: selectedObjective.id,
+                        objectiveTitle: selectedObjective.title,
+                        originalWeight: selectedObjective.weight,
+                        plannerWeight: selectedObjective.planner_weight,
+                        effectiveWeight: selectedObjective.effective_weight,
+                        finalWeight: effectiveWeight
+                      });
+                    } else if (selectedProgram) {
+                      effectiveWeight = selectedProgram.strategic_objective?.effective_weight ||
+                                      selectedProgram.strategic_objective?.planner_weight ||
+                                      selectedProgram.strategic_objective?.weight || 100;
+                    }
+                    
+                    return (
                   <InitiativeList
                     parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
                     parentType={selectedObjective ? 'objective' : 'program'}
-                    parentWeight={selectedObjective ? (selectedObjective.effective_weight || selectedObjective.planner_weight || selectedObjective.weight) : (selectedProgram?.strategic_objective?.weight || 100)}
+                        parentWeight={effectiveWeight}
                     onEditInitiative={handleEditInitiative}
                     onSelectInitiative={handleSelectInitiative}
                     planKey={`planning-${refreshKey}`}
                     isUserPlanner={isUserPlanner}
                     userOrgId={userOrgId}
                   />
+                    );
+                  })()
                 ) : (
                   <div className="text-center p-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
                     <BarChart3 className="h-8 w-8 text-gray-400 mx-auto mb-2" />

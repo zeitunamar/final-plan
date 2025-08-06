@@ -32,7 +32,6 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
   const [isLoadingFeeds, setIsLoadingFeeds] = useState(false);
   const [availableFeeds, setAvailableFeeds] = useState<any[]>([]);
   const [existingInitiatives, setExistingInitiatives] = useState<any[]>([]);
-  const [effectiveParentWeight, setEffectiveParentWeight] = useState<number>(parentWeight);
   const [useInitiativeFeed, setUseInitiativeFeed] = useState<boolean>(
     initialData?.initiative_feed ? true : false
   );
@@ -50,11 +49,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
   const selectedInitiativeFeed = watch('initiative_feed');
   const watchedWeight = watch('weight');
 
-  // Set the effective parent weight from the passed prop (this should be the custom weight)
-  useEffect(() => {
-    console.log('InitiativeForm received parentWeight:', parentWeight);
-    setEffectiveParentWeight(parentWeight);
-  }, [parentWeight]);
+  console.log('InitiativeForm received parentWeight:', parentWeight, 'for', parentType, parentId);
 
   // WORKING AUTO-FILL LOGIC FROM PREVIOUS CODE
   // When a feed is selected, update the name field
@@ -108,11 +103,11 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
     );
     
     // Use the effective parent weight for calculations
-    const remainingWeight = effectiveParentWeight - otherInitiativesWeight;
+    const remainingWeight = parentWeight - otherInitiativesWeight;
     const maxWeight = Math.max(0, remainingWeight);
     
     console.log('Weight calculation in InitiativeForm:', {
-      effectiveParentWeight,
+      parentWeight,
       otherInitiativesWeight,
       remainingWeight,
       maxWeight,
@@ -124,7 +119,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
       remainingWeight,
       maxWeight,
       totalWithCurrent: otherInitiativesWeight + (Number(watchedWeight) || 0),
-      effectiveParentWeight
+      parentWeight
     };
   };
 
@@ -181,14 +176,14 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
       // Validate that the weight doesn't exceed the remaining weight
       const currentWeight = Number(data.weight) || 0;
       if (currentWeight > weights.maxWeight) {
-        setError(`Weight cannot exceed ${weights.maxWeight.toFixed(2)}%. Available weight: ${weights.remainingWeight.toFixed(2)}% (Parent weight: ${effectiveParentWeight}%)`);
+        setError(`Weight cannot exceed ${weights.maxWeight.toFixed(2)}%. Available weight: ${weights.remainingWeight.toFixed(2)}% (Parent weight: ${parentWeight}%)`);
         setIsSubmitting(false);
         return;
       }
       
       // For objectives, validate that total weight doesn't exceed parent weight
-      if (parentType === 'objective' && weights.totalWithCurrent > effectiveParentWeight) {
-        setError(`Total initiative weight (${weights.totalWithCurrent.toFixed(2)}%) cannot exceed objective weight (${effectiveParentWeight.toFixed(2)}%)`);
+      if (parentType === 'objective' && weights.totalWithCurrent > parentWeight) {
+        setError(`Total initiative weight (${weights.totalWithCurrent.toFixed(2)}%) cannot exceed objective weight (${parentWeight.toFixed(2)}%)`);
         setIsSubmitting(false);
         return;
       }
@@ -233,7 +228,7 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-blue-600">Parent Weight</p>
-            <p className="font-semibold text-blue-800">{effectiveParentWeight.toFixed(2)}%</p>
+            <p className="font-semibold text-blue-800">{parentWeight.toFixed(2)}%</p>
           </div>
           <div>
             <p className="text-blue-600">Other Initiatives</p>
@@ -249,8 +244,9 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
         
         {parentType === 'objective' && (
           <p className="mt-2 text-xs text-blue-600">
-            <strong>Important:</strong> For this objective with custom weight {effectiveParentWeight.toFixed(2)}%, 
-            the total initiative weights must equal <strong>exactly {effectiveParentWeight.toFixed(2)}%</strong>.
+            <strong>Important:</strong> For this objective with custom weight {parentWeight.toFixed(2)}%, 
+            the total initiative weights must equal <strong>exactly {parentWeight.toFixed(2)}%</strong>.
+          </p>
         )}
         
         {weights.remainingWeight < 0 && (

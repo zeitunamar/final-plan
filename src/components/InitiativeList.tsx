@@ -277,7 +277,7 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
           <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
             <p className="text-sm text-blue-700 flex items-center">
               <Info className="h-4 w-4 mr-2" />
-              <strong>Important:</strong> For this objective with custom weight {parentWeight}%, 
+              <strong>Important:</strong> For this objective with custom weight {parentWeight.toFixed(2)}%, 
               the total initiative weights must equal <strong>exactly {parentWeight}%</strong>.
             </p>
           </div>
@@ -317,18 +317,21 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
             <button
               onClick={handleValidateInitiatives}
               disabled={
-                !isWeightComplete ||
-                filteredInitiatives.length === 0
+                filteredInitiatives.length === 0 ||
+                (parentType === 'objective' && Math.abs(total_initiatives_weight - parentWeight) >= 0.01)
               }
-              className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {!isWeightComplete ? `Complete Weight Distribution (${remaining_weight.toFixed(1)}% remaining)` :
-               'Validate Initiatives Weight'}
+              {parentType === 'objective' && Math.abs(total_initiatives_weight - parentWeight) >= 0.01
+                ? `Complete Weight Distribution (${remaining_weight.toFixed(1)}% ${remaining_weight > 0 ? 'remaining' : 'over'})`
+                : 'Validate Initiatives Weight'}
             </button>
             
-            {!isWeightComplete && filteredInitiatives.length > 0 && (
+            {parentType === 'objective' && Math.abs(total_initiatives_weight - parentWeight) >= 0.01 && filteredInitiatives.length > 0 && (
               <p className="mt-2 text-xs text-amber-600 text-center">
-                Add more initiatives to reach exactly {parentWeight}% total weight
+                {remaining_weight > 0 
+                  ? `Add more initiatives to reach exactly ${parentWeight}% total weight`
+                  : `Reduce initiative weights to reach exactly ${parentWeight}% total weight`}
               </p>
             )}
           </div>
@@ -499,16 +502,16 @@ const InitiativeList: React.FC<InitiativeListProps> = ({
         <div className="mt-4 text-center">
           <button 
             onClick={() => onEditInitiative({})}
-            disabled={parentType === 'objective' && remaining_weight <= 0}
+            disabled={parentType === 'objective' && remaining_weight <= 0.01}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <PlusCircle className="h-4 w-4 mr-2" />
             {initiativesList.data.length === 0 ? 'Create First Initiative' : 
-             remaining_weight <= 0 ? `No Weight Available (${remaining_weight.toFixed(1)}%)` :
+             remaining_weight <= 0.01 ? `No Weight Available (${remaining_weight.toFixed(1)}%)` :
              'Create New Initiative'}
           </button>
           
-          {parentType === 'objective' && remaining_weight <= 0 && total_initiatives_weight < parentWeight && (
+          {parentType === 'objective' && remaining_weight <= 0.01 && total_initiatives_weight < parentWeight && (
             <p className="mt-2 text-xs text-amber-600">
               Cannot add more initiatives. Total weight must equal exactly {parentWeight}%.
             </p>
