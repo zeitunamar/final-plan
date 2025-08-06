@@ -644,60 +644,99 @@ const Planning: React.FC = () => {
               </div>
             </div>
 
-            {/* Objectives List */}
-            <StrategicObjectivesList
-              onSelectObjective={handleSelectObjective}
-              selectedObjectiveId={selectedObjective?.id}
-              onSelectProgram={handleSelectProgram}
-              selectedObjectives={selectedObjectives}
-            />
-
-            {/* Initiatives Section */}
-            {(selectedObjective || selectedProgram) && (
+            {/* 3-Column Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Column 1: Selected Objectives */}
               <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                <InitiativeList
-                  parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
-                  parentType={selectedObjective ? 'objective' : 'program'}
-                  parentWeight={selectedObjective?.weight || selectedProgram?.strategic_objective?.weight || 100}
-                  onEditInitiative={handleEditInitiative}
-                  onSelectInitiative={handleSelectInitiative}
-                  planKey={`planning-${refreshKey}`}
-                  isUserPlanner={isUserPlanner}
-                  userOrgId={userOrgId}
+                <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                  <Target className="h-5 w-5 mr-2 text-blue-600" />
+                  Selected Objectives
+                </h3>
+                <StrategicObjectivesList
+                  onSelectObjective={handleSelectObjective}
+                  selectedObjectiveId={selectedObjective?.id}
+                  onSelectProgram={handleSelectProgram}
+                  selectedObjectives={selectedObjectives}
                 />
               </div>
-            )}
 
-            {/* Performance Measures Section */}
-            {selectedInitiative && (
+              {/* Column 2: Initiatives */}
               <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                <PerformanceMeasureList
-                  initiativeId={selectedInitiative.id}
-                  initiativeWeight={Number(selectedInitiative.weight)}
-                  onEditMeasure={handleEditMeasure}
-                  onSelectMeasure={() => {}}
-                  planKey={`planning-${refreshKey}`}
-                />
+                <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                  <BarChart3 className="h-5 w-5 mr-2 text-green-600" />
+                  Strategic Initiatives
+                </h3>
+                {(selectedObjective || selectedProgram) ? (
+                  <InitiativeList
+                    parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
+                    parentType={selectedObjective ? 'objective' : 'program'}
+                    parentWeight={selectedObjective?.weight || selectedProgram?.strategic_objective?.weight || 100}
+                    onEditInitiative={handleEditInitiative}
+                    onSelectInitiative={handleSelectInitiative}
+                    planKey={`planning-${refreshKey}`}
+                    isUserPlanner={isUserPlanner}
+                    userOrgId={userOrgId}
+                  />
+                ) : (
+                  <div className="text-center p-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                    <BarChart3 className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-500">Select an objective to view initiatives</p>
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* Main Activities Section */}
-            {selectedInitiative && (
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                <MainActivityList
-                  initiativeId={selectedInitiative.id}
-                  initiativeWeight={Number(selectedInitiative.weight)}
-                  onEditActivity={handleEditActivity}
-                  onSelectActivity={() => {}}
-                  onAddBudget={handleAddBudget}
-                  onEditBudget={handleEditBudget}
-                  onViewBudget={handleViewBudget}
-                  planKey={`planning-${refreshKey}`}
-                  isUserPlanner={isUserPlanner}
-                  userOrgId={userOrgId}
-                />
+              {/* Column 3: Performance Measures & Main Activities */}
+              <div className="space-y-6">
+                {/* Performance Measures */}
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                    <Activity className="h-5 w-5 mr-2 text-purple-600" />
+                    Performance Measures
+                  </h3>
+                  {selectedInitiative ? (
+                    <PerformanceMeasureList
+                      initiativeId={selectedInitiative.id}
+                      initiativeWeight={Number(selectedInitiative.weight)}
+                      onEditMeasure={handleEditMeasure}
+                      onSelectMeasure={() => {}}
+                      planKey={`planning-${refreshKey}`}
+                    />
+                  ) : (
+                    <div className="text-center p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                      <Activity className="h-6 w-6 text-gray-400 mx-auto mb-2" />
+                      <p className="text-gray-500 text-sm">Select an initiative to view performance measures</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Main Activities */}
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                    <DollarSign className="h-5 w-5 mr-2 text-orange-600" />
+                    Main Activities
+                  </h3>
+                  {selectedInitiative ? (
+                    <MainActivityList
+                      initiativeId={selectedInitiative.id}
+                      initiativeWeight={Number(selectedInitiative.weight)}
+                      onEditActivity={handleEditActivity}
+                      onSelectActivity={() => {}}
+                      onAddBudget={handleAddBudget}
+                      onEditBudget={handleEditBudget}
+                      onViewBudget={handleViewBudget}
+                      planKey={`planning-${refreshKey}`}
+                      isUserPlanner={isUserPlanner}
+                      userOrgId={userOrgId}
+                    />
+                  ) : (
+                    <div className="text-center p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                      <DollarSign className="h-6 w-6 text-gray-400 mx-auto mb-2" />
+                      <p className="text-gray-500 text-sm">Select an initiative to view main activities</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
           </div>
         )}
 
