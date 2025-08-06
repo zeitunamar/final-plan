@@ -84,13 +84,11 @@ import ProcurementCostingTool from '../components/ProcurementCostingTool';
 
 type PlanningStep = 
   | 'plan-type' 
-  | 'objective-mode' 
   | 'objective-selection' 
   | 'planning' 
   | 'review' 
   | 'submit';
 
-type ObjectiveSelectionMode = 'default' | 'custom';
 
 const Planning: React.FC = () => {
   const { t } = useLanguage();
@@ -100,7 +98,6 @@ const Planning: React.FC = () => {
   // Core state
   const [currentStep, setCurrentStep] = useState<PlanningStep>('plan-type');
   const [selectedPlanType, setSelectedPlanType] = useState<PlanType>('LEO/EO Plan');
-  const [objectiveMode, setObjectiveMode] = useState<ObjectiveSelectionMode>('default');
   const [selectedObjectives, setSelectedObjectives] = useState<StrategicObjective[]>([]);
   const [selectedObjective, setSelectedObjective] = useState<StrategicObjective | null>(null);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
@@ -206,13 +203,9 @@ const Planning: React.FC = () => {
   // Step handlers
   const handlePlanTypeSelect = (type: PlanType) => {
     setSelectedPlanType(type);
-    setCurrentStep('objective-mode');
-  };
-
-  const handleObjectiveModeSelect = (mode: ObjectiveSelectionMode) => {
-    setObjectiveMode(mode);
     setCurrentStep('objective-selection');
   };
+
 
   const handleObjectivesSelected = (objectives: StrategicObjective[]) => {
     console.log('Objectives selected in Planning:', objectives);
@@ -460,11 +453,8 @@ const Planning: React.FC = () => {
   // Navigation handlers
   const handleBack = () => {
     switch (currentStep) {
-      case 'objective-mode':
-        setCurrentStep('plan-type');
-        break;
       case 'objective-selection':
-        setCurrentStep('objective-mode');
+        setCurrentStep('plan-type');
         break;
       case 'planning':
         setCurrentStep('objective-selection');
@@ -547,7 +537,6 @@ const Planning: React.FC = () => {
           <ol className="flex items-center">
             {[
               { key: 'plan-type', label: 'Plan Type' },
-              { key: 'objective-mode', label: 'Selection Mode' },
               { key: 'objective-selection', label: 'Objectives' },
               { key: 'planning', label: 'Planning' },
               { key: 'review', label: 'Review' }
@@ -557,8 +546,8 @@ const Planning: React.FC = () => {
                   <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${
                     currentStep === step.key 
                       ? 'border-green-600 bg-green-600 text-white' 
-                      : ['plan-type', 'objective-mode', 'objective-selection'].includes(step.key) && 
-                        ['objective-mode', 'objective-selection', 'planning', 'review'].includes(currentStep)
+                      : ['plan-type', 'objective-selection'].includes(step.key) && 
+                        ['objective-selection', 'planning', 'review'].includes(currentStep)
                         ? 'border-green-600 bg-green-600 text-white'
                         : 'border-gray-300 bg-white text-gray-500'
                   }`}>
@@ -586,12 +575,8 @@ const Planning: React.FC = () => {
           <PlanTypeSelector onSelectPlanType={handlePlanTypeSelect} />
         )}
 
-        {/* Step 2: Objective Selection Mode */}
-        {currentStep === 'objective-mode' && (
-          <ObjectiveSelectionMode onSelectMode={handleObjectiveModeSelect} />
-        )}
 
-        {/* Step 3: Objective Selection */}
+        {/* Step 2: Objective Selection */}
         {currentStep === 'objective-selection' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -603,45 +588,20 @@ const Planning: React.FC = () => {
                 Back
               </button>
               <h2 className="text-xl font-semibold text-gray-900">
-                {objectiveMode === 'default' ? 'Select Default Objective' : 'Select Custom Objectives'}
+                Select Strategic Objectives
               </h2>
               <div></div>
             </div>
 
-            {objectiveMode === 'custom' ? (
-              <HorizontalObjectiveSelector
-                onObjectivesSelected={handleObjectivesSelected}
-                onProceed={handleProceedToPlanning}
-                initialObjectives={selectedObjectives}
-              />
-            ) : (
-              <div className="space-y-6">
-                <StrategicObjectivesList
-                  onSelectObjective={(objective) => {
-                    setSelectedObjectives([objective]);
-                    handleObjectivesSelected([objective]);
-                  }}
-                  selectedObjectiveId={selectedObjectives[0]?.id}
-                  selectedObjectives={selectedObjectives}
-                />
-                
-                {selectedObjectives.length > 0 && (
-                  <div className="flex justify-end">
-                    <button
-                      onClick={handleProceedToPlanning}
-                      className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center"
-                    >
-                      Proceed to Planning
-                      <ArrowRight className="ml-2 h-5 w-5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+            <HorizontalObjectiveSelector
+              onObjectivesSelected={handleObjectivesSelected}
+              onProceed={handleProceedToPlanning}
+              initialObjectives={selectedObjectives}
+            />
           </div>
         )}
 
-        {/* Step 4: Planning Interface */}
+        {/* Step 3: Planning Interface */}
         {currentStep === 'planning' && (
           <div className="space-y-6">
             {/* Planning Header */}
@@ -741,7 +701,7 @@ const Planning: React.FC = () => {
           </div>
         )}
 
-        {/* Step 5: Review */}
+        {/* Step 4: Review */}
         {currentStep === 'review' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
