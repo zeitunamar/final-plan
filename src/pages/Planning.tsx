@@ -24,7 +24,9 @@ import {
   Calendar,
   FileType,
   Info,
-  RefreshCw
+  RefreshCw,
+  Clock,
+  XCircle
 } from 'lucide-react';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 import { 
@@ -55,6 +57,7 @@ import type {
   ActivityType 
 } from '../types/plan';
 import { isPlanner, isAdmin } from '../types/user';
+import { format } from 'date-fns';
 
 // Component imports
 import PlanTypeSelector from '../components/PlanTypeSelector';
@@ -89,6 +92,321 @@ type PlanningStep =
   | 'review' 
   | 'submit';
 
+// Success Modal Component
+interface SuccessModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onViewPlans: () => void;
+}
+
+const SuccessModal: React.FC<SuccessModalProps> = ({ isOpen, onClose, onViewPlans }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg p-6 max-w-md w-full">
+        <div className="text-center">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
+            <CheckCircle className="h-6 w-6 text-green-600" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Plan Submitted Successfully!</h3>
+          <p className="text-sm text-gray-500 mb-6">
+            Your plan has been submitted for review. You can track its status in your plans dashboard.
+          </p>
+          <div className="flex space-x-3">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Close
+            </button>
+            <button
+              onClick={onViewPlans}
+              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700"
+            >
+              View My Plans
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Plan Status Modal Component
+interface PlanStatusModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onViewPlans: () => void;
+  planStatus: 'SUBMITTED' | 'APPROVED' | 'REJECTED' | null;
+  message: string;
+}
+
+const PlanStatusModal: React.FC<PlanStatusModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  onViewPlans, 
+  planStatus, 
+  message 
+}) => {
+  if (!isOpen) return null;
+
+  const getIcon = () => {
+    switch (planStatus) {
+      case 'SUBMITTED':
+        return <Clock className="h-6 w-6 text-yellow-600" />;
+      case 'APPROVED':
+        return <CheckCircle className="h-6 w-6 text-green-600" />;
+      case 'REJECTED':
+        return <XCircle className="h-6 w-6 text-red-600" />;
+      default:
+        return <AlertCircle className="h-6 w-6 text-blue-600" />;
+    }
+  };
+
+  const getTitle = () => {
+    switch (planStatus) {
+      case 'SUBMITTED':
+        return 'Plan Already Submitted';
+      case 'APPROVED':
+        return 'Plan Already Approved';
+      case 'REJECTED':
+        return 'Plan Was Rejected';
+      default:
+        return 'Plan Status';
+    }
+  };
+
+  const getButtonText = () => {
+    switch (planStatus) {
+      case 'REJECTED':
+        return 'Create New Plan';
+      default:
+        return 'View My Plans';
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg p-6 max-w-md w-full">
+        <div className="text-center">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-gray-100 mb-4">
+            {getIcon()}
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{getTitle()}</h3>
+          <p className="text-sm text-gray-500 mb-6">{message}</p>
+          <div className="flex space-x-3">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Close
+            </button>
+            <button
+              onClick={onViewPlans}
+              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium ${
+                planStatus === 'REJECTED' 
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              }`}
+            >
+              {getButtonText()}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Plans Table Component
+interface PlansTableProps {
+  onCreateNewPlan: () => void;
+  userOrgId: number | null;
+}
+
+const PlansTable: React.FC<PlansTableProps> = ({ onCreateNewPlan, userOrgId }) => {
+  const navigate = useNavigate();
+  const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
+
+  // Fetch organizations for mapping
+  useEffect(() => {
+    const fetchOrganizations = async () => {
+      try {
+        const response = await organizations.getAll();
+        const orgMap: Record<string, string> = {};
+        
+        if (response && Array.isArray(response)) {
+          response.forEach((org: any) => {
+            if (org && org.id) {
+              orgMap[org.id] = org.name;
+            }
+          });
+        }
+        
+        setOrganizationsMap(orgMap);
+      } catch (error) {
+        console.error('Failed to fetch organizations:', error);
+      }
+    };
+    
+    fetchOrganizations();
+  }, []);
+
+  // Fetch user's plans
+  const { data: userPlans, isLoading, refetch } = useQuery({
+    queryKey: ['user-plans', userOrgId],
+    queryFn: async () => {
+      if (!userOrgId) return { data: [] };
+      
+      try {
+        const response = await api.get('/plans/', {
+          params: { organization: userOrgId }
+        });
+        
+        const plansData = response.data?.results || response.data || [];
+        
+        // Map organization names
+        plansData.forEach((plan: any) => {
+          if (plan.organization && organizationsMap[plan.organization]) {
+            plan.organizationName = organizationsMap[plan.organization];
+          }
+        });
+        
+        return { data: plansData };
+      } catch (error) {
+        console.error('Error fetching user plans:', error);
+        return { data: [] };
+      }
+    },
+    enabled: !!userOrgId && Object.keys(organizationsMap).length > 0,
+    retry: 2
+  });
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    try {
+      return format(new Date(dateString), 'MMM d, yyyy');
+    } catch (e) {
+      return 'Invalid date';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'APPROVED':
+        return 'bg-green-100 text-green-800';
+      case 'SUBMITTED':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'REJECTED':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const handleViewPlan = (plan: any) => {
+    navigate(`/plans/${plan.id}`);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader className="h-6 w-6 animate-spin mr-2" />
+        <span>Loading your plans...</span>
+      </div>
+    );
+  }
+
+  const plans = userPlans?.data || [];
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-semibold text-gray-900">Your Plans</h2>
+          <button
+            onClick={onCreateNewPlan}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Create New Plan
+          </button>
+        </div>
+
+        {plans.length === 0 ? (
+          <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+            <FileSpreadsheet className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Plans Created</h3>
+            <p className="text-gray-500 mb-4">You haven't created any plans yet.</p>
+            <button
+              onClick={onCreateNewPlan}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Create Your First Plan
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Plan Type
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Planning Period
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Submitted Date
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {plans.map((plan: any) => (
+                  <tr key={plan.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {plan.type}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {plan.from_date && plan.to_date ? 
+                        `${formatDate(plan.from_date)} - ${formatDate(plan.to_date)}` :
+                        'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(plan.status)}`}>
+                        {plan.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {formatDate(plan.submitted_at)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button
+                        onClick={() => handleViewPlan(plan)}
+                        className="text-blue-600 hover:text-blue-900 flex items-center"
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const Planning: React.FC = () => {
   const { t } = useLanguage();
@@ -121,6 +439,13 @@ const Planning: React.FC = () => {
   const [showBudgetDetails, setShowBudgetDetails] = useState(false);
   const [showCostingTool, setShowCostingTool] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [planStatusInfo, setPlanStatusInfo] = useState<{
+    status: 'SUBMITTED' | 'APPROVED' | 'REJECTED' | null;
+    message: string;
+  }>({ status: null, message: '' });
+  const [showPlansTable, setShowPlansTable] = useState(true);
   
   // Edit state
   const [editingInitiative, setEditingInitiative] = useState<StrategicInitiative | null>(null);
@@ -140,6 +465,49 @@ const Planning: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Check for existing plans on component mount
+  useEffect(() => {
+    const checkExistingPlans = async () => {
+      if (!userOrgId) return;
+      
+      try {
+        const response = await api.get('/plans/', {
+          params: { organization: userOrgId }
+        });
+        
+        const plans = response.data?.results || response.data || [];
+        
+        // Check for existing plans
+        const submittedPlan = plans.find((p: any) => p.status === 'SUBMITTED');
+        const approvedPlan = plans.find((p: any) => p.status === 'APPROVED');
+        const rejectedPlan = plans.find((p: any) => p.status === 'REJECTED');
+        
+        if (approvedPlan) {
+          setPlanStatusInfo({
+            status: 'APPROVED',
+            message: 'Your plan has been approved. You cannot create a new plan until the next planning cycle.'
+          });
+          setShowStatusModal(true);
+          setShowPlansTable(true);
+        } else if (submittedPlan) {
+          setPlanStatusInfo({
+            status: 'SUBMITTED',
+            message: 'You have already submitted a plan. Please wait for the evaluator to review it before creating a new one.'
+          });
+          setShowStatusModal(true);
+          setShowPlansTable(true);
+        } else {
+          // No blocking plans, show normal planning interface
+          setShowPlansTable(true);
+        }
+      } catch (error) {
+        console.error('Failed to check existing plans:', error);
+        setShowPlansTable(true);
+      }
+    };
+    
+    checkExistingPlans();
+  }, [userOrgId]);
   // Fetch current user and organization
   useEffect(() => {
     const fetchUserData = async () => {
@@ -200,6 +568,32 @@ const Planning: React.FC = () => {
     );
   }
 
+  // Show plans table first
+  if (showPlansTable && currentStep === 'plan-type') {
+    return (
+      <div className="px-4 py-6 sm:px-0">
+        <PlansTable 
+          onCreateNewPlan={() => {
+            setShowPlansTable(false);
+            setCurrentStep('plan-type');
+          }}
+          userOrgId={userOrgId}
+        />
+        
+        {/* Status Modal */}
+        <PlanStatusModal
+          isOpen={showStatusModal}
+          onClose={() => setShowStatusModal(false)}
+          onViewPlans={() => {
+            setShowStatusModal(false);
+            // Stay on plans table
+          }}
+          planStatus={planStatusInfo.status}
+          message={planStatusInfo.message}
+        />
+      </div>
+    );
+  }
   // Step handlers
   const handlePlanTypeSelect = (type: PlanType) => {
     setSelectedPlanType(type);
@@ -429,6 +823,38 @@ const Planning: React.FC = () => {
         throw new Error('Missing required plan data');
       }
       
+      // Check for existing plans before submitting
+      try {
+        const existingPlansResponse = await api.get('/plans/', {
+          params: { organization: userOrgId }
+        });
+        
+        const existingPlans = existingPlansResponse.data?.results || existingPlansResponse.data || [];
+        const submittedPlan = existingPlans.find((p: any) => p.status === 'SUBMITTED');
+        const approvedPlan = existingPlans.find((p: any) => p.status === 'APPROVED');
+        
+        if (approvedPlan) {
+          setPlanStatusInfo({
+            status: 'APPROVED',
+            message: 'You already have an approved plan. You cannot create a new plan until the next planning cycle.'
+          });
+          setShowStatusModal(true);
+          return;
+        }
+        
+        if (submittedPlan) {
+          setPlanStatusInfo({
+            status: 'SUBMITTED',
+            message: 'You have already submitted a plan. Please wait for the evaluator to review it before creating a new one.'
+          });
+          setShowStatusModal(true);
+          return;
+        }
+      } catch (checkError) {
+        console.warn('Failed to check existing plans:', checkError);
+        // Continue with submission if check fails
+      }
+      
       // Prepare selected objectives weights
       const selectedObjectivesWeights: Record<string, number> = {};
       selectedObjectives.forEach(obj => {
@@ -461,21 +887,44 @@ const Planning: React.FC = () => {
       const createdPlan = await plans.create(planData);
       console.log('Plan created:', createdPlan);
       
-      setSuccess('Plan submitted successfully!');
-      
-      // Navigate to dashboard after short delay
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 2000);
+      // Show success modal
+      setShowSuccessModal(true);
       
     } catch (error: any) {
       console.error('Failed to submit plan:', error);
-      setError(error.message || 'Failed to submit plan');
+      
+      // Check if it's a duplicate plan error
+      if (error.response?.data?.detail?.includes('already been submitted') || 
+          error.response?.data?.detail?.includes('duplicate')) {
+        setPlanStatusInfo({
+          status: 'SUBMITTED',
+          message: 'You have already submitted a plan. Please wait for the evaluator to review it.'
+        });
+        setShowStatusModal(true);
+      } else {
+        setError(error.message || 'Failed to submit plan');
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleCreateNewPlan = () => {
+    // Reset all state for new plan
+    setShowPlansTable(false);
+    setCurrentStep('plan-type');
+    setSelectedObjectives([]);
+    setSelectedObjective(null);
+    setSelectedProgram(null);
+    setSelectedInitiative(null);
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleViewMyPlans = () => {
+    setShowPlansTable(true);
+    setCurrentStep('plan-type');
+  };
   // Navigation handlers
   const handleBack = () => {
     switch (currentStep) {
@@ -492,7 +941,7 @@ const Planning: React.FC = () => {
         setCurrentStep('review');
         break;
       default:
-        navigate('/dashboard');
+        setShowPlansTable(true);
     }
   };
 
@@ -1050,6 +1499,32 @@ const Planning: React.FC = () => {
         toDate={toDate}
         planType={selectedPlanType}
         refreshKey={refreshKey}
+      />
+
+      {/* Success Modal */}
+      <SuccessModal
+        isOpen={showSuccessModal}
+        onClose={() => {
+          setShowSuccessModal(false);
+          handleViewMyPlans();
+        }}
+        onViewPlans={handleViewMyPlans}
+      />
+
+      {/* Plan Status Modal */}
+      <PlanStatusModal
+        isOpen={showStatusModal}
+        onClose={() => setShowStatusModal(false)}
+        onViewPlans={() => {
+          setShowStatusModal(false);
+          if (planStatusInfo.status === 'REJECTED') {
+            handleCreateNewPlan();
+          } else {
+            handleViewMyPlans();
+          }
+        }}
+        planStatus={planStatusInfo.status}
+        message={planStatusInfo.message}
       />
     </div>
   );

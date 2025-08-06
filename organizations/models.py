@@ -1020,7 +1020,7 @@ class Plan(models.Model):
         super().clean()
         
         # Validate date range
-        if self.to_date and self.from_date and self.to_date <= self.from_date:
+        if self.to_date is not None and self.from_date is not None and self.to_date <= self.from_date:
             raise ValidationError('End date must be after start date')
             
         # Make sure we have at least one of strategic_objective, program
@@ -1032,13 +1032,12 @@ class Plan(models.Model):
             # Check for existing approved/submitted plans with same organization + objective/program
             existing_plans = Plan.objects.filter(
                 organization=self.organization,
-                strategic_objective=self.strategic_objective,
                 status__in=['SUBMITTED', 'APPROVED']
             ).exclude(id=self.id)
             
             if existing_plans.exists():
                 raise ValidationError(
-                    'A plan for this organization and strategic objective has already been submitted or approved'
+                    'A plan for this organization has already been submitted or approved'
                 )
     
     def save(self, *args, **kwargs):
