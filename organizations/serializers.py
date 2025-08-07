@@ -174,79 +174,40 @@ class PlanSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Override create to handle selected objectives and their weights"""
         try:
-            print("=== PLAN SERIALIZER CREATE START ===")
-            print(f"Input validated_data: {validated_data}")
-            
             with transaction.atomic():
                 # Extract selected objectives data if provided
                 selected_objectives_data = validated_data.pop('selected_objectives', [])
                 selected_objectives_weights = validated_data.pop('selected_objectives_weights', {})
                 
-                print(f"Extracted selected_objectives: {selected_objectives_data}")
-                print(f"Extracted weights: {selected_objectives_weights}")
-                
                 # Create the plan
                 plan = Plan.objects.create(**validated_data)
-                print(f"Plan created with ID: {plan.id}")
                 
                 # Add selected objectives if provided
                 if selected_objectives_data:
-                    print(f"Processing selected_objectives_data: {selected_objectives_data}")
-                    
-                    # Ensure we have a list of valid IDs
-                    objective_ids = []
-                    
+                    # Handle both list of IDs and list of objects
                     if isinstance(selected_objectives_data, list):
-                        for item in selected_objectives_data:
-                            if isinstance(item, dict) and 'id' in item:
-                                # Extract ID from object
-                                obj_id = int(item['id'])
-                                objective_ids.append(obj_id)
-                                print(f"Extracted ID from object: {obj_id}")
-                            elif isinstance(item, (int, str)):
-                                # Direct ID value
-                                obj_id = int(item)
-                                objective_ids.append(obj_id)
-                                print(f"Direct ID: {obj_id}")
-                            else:
-                                print(f"Skipping invalid item: {item} (type: {type(item)})")
+                        if selected_objectives_data and isinstance(selected_objectives_data[0], dict):
+                            # List of objects with 'id' field
+                            objective_ids = [obj['id'] for obj in selected_objectives_data if 'id' in obj]
+                        else:
+                            # List of IDs
+                            objective_ids = selected_objectives_data
                     else:
-                        print(f"selected_objectives_data is not a list: {type(selected_objectives_data)}")
                         objective_ids = []
                     
-                    print(f"Final objective_ids: {objective_ids}")
-                    
                     if objective_ids:
-                        # Validate that all objectives exist
-                        from .models import StrategicObjective
-                        existing_objectives = StrategicObjective.objects.filter(id__in=objective_ids)
-                        existing_ids = list(existing_objectives.values_list('id', flat=True))
-                        
-                        print(f"Existing objective IDs in database: {existing_ids}")
-                        
-                        if len(existing_ids) != len(objective_ids):
-                            missing_ids = set(objective_ids) - set(existing_ids)
-                            raise ValueError(f"Objectives not found: {missing_ids}")
-                        
-                        plan.selected_objectives.set(existing_ids)
-                        print(f"Set selected_objectives: {existing_ids}")
-                    else:
-                        print("No valid objective IDs to set")
+                        plan.selected_objectives.set(objective_ids)
                 
                 # Save custom weights if provided
                 if selected_objectives_weights:
-                    print(f"Saving custom weights: {selected_objectives_weights}")
                     plan.selected_objectives_weights = selected_objectives_weights
                     plan.save()
-                    print("Custom weights saved")
                 
-                print("=== PLAN SERIALIZER CREATE COMPLETE ===")
                 return plan
         except Exception as e:
-            print(f"=== PLAN SERIALIZER CREATE ERROR ===")
-            print(f"Error: {str(e)}")
+            print(f"Error creating plan: {str(e)}")
             import traceback
-            print(f"Full traceback: {traceback.format_exc()}")
+            print(f"Traceback: {traceback.format_exc()}")
             raise serializers.ValidationError(f"Failed to create plan: {str(e)}")
     
     def update(self, instance, validated_data):

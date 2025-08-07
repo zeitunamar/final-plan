@@ -578,35 +578,6 @@ class PlanViewSet(viewsets.ModelViewSet):
     serializer_class = PlanSerializer
     permission_classes = [IsAuthenticated]
     
-    def create(self, request, *args, **kwargs):
-        print("=== PLAN VIEWSET CREATE START ===")
-        print(f"Request data: {request.data}")
-        print(f"Request user: {request.user}")
-        print(f"Request method: {request.method}")
-        
-        try:
-            response = super().create(request, *args, **kwargs)
-            print(f"Plan created successfully: {response.data}")
-            return response
-        except Exception as e:
-            print(f"Plan creation failed: {str(e)}")
-            print(f"Error type: {type(e)}")
-            if hasattr(e, 'detail'):
-                print(f"Error detail: {e.detail}")
-            raise
-    
-    def update(self, request, *args, **kwargs):
-        print("=== PLAN VIEWSET UPDATE START ===")
-        print(f"Request data: {request.data}")
-        
-        try:
-            response = super().update(request, *args, **kwargs)
-            print(f"Plan updated successfully: {response.data}")
-            return response
-        except Exception as e:
-            print(f"Plan update failed: {str(e)}")
-            raise
-    
     def get_queryset(self):
         queryset = Plan.objects.all()
         
