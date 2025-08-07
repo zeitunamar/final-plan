@@ -18,8 +18,8 @@ const AdminDashboard: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [reviewedPage, setReviewedPage] = useState(1);
   const plansPerPage = 5;
-  const [currentActivityPage, setCurrentActivityPage] = useState(1);
-  const activitiesPerPage = 10;
+    return breakdown;
+  };
 
   // Check admin permissions
   useEffect(() => {
