@@ -47,18 +47,47 @@ api.interceptors.response.use(
 // Enhanced CSRF token handling
 const ensureCsrfToken = async () => {
   try {
+    console.log('=== CSRF TOKEN REFRESH START ===');
     let token = Cookies.get('csrftoken');
-    if (token) return token;
+    console.log('Current CSRF token exists:', !!token);
+    
+    if (token) {
+      console.log('Using existing CSRF token');
+      return token;
+    }
     
     // Try multiple endpoints to get CSRF token
-    await Promise.allSettled([
-      axios.get('/api/auth/csrf/', { withCredentials: true }),
-      axios.get('/api/auth/check/', { withCredentials: true })
-    ]);
+    console.log('Fetching new CSRF token...');
+    try {
+      await axios.get('/api/auth/csrf/', { 
+        withCredentials: true,
+        timeout: 10000,
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
+    } catch (csrfError) {
+      console.warn('Primary CSRF endpoint failed, trying backup:', csrfError);
+      try {
+        await axios.get('/api/auth/check/', { 
+          withCredentials: true,
+          timeout: 8000
+        });
+      } catch (backupError) {
+        console.error('Backup CSRF endpoint also failed:', backupError);
+      }
+    }
     
     token = Cookies.get('csrftoken');
-    if (!token) throw new Error('CSRF token not found after refresh');
+    console.log('CSRF token after refresh:', !!token);
     
+    if (!token) {
+      console.error('CSRF token still not available after refresh attempts');
+      throw new Error('CSRF token not found after refresh');
+    }
+    
+    console.log('=== CSRF TOKEN REFRESH COMPLETE ===');
     return token;
   } catch (error) {
     console.error('Failed to ensure CSRF token:', error);
