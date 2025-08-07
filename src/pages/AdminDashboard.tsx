@@ -17,9 +17,9 @@ const AdminDashboard: React.FC = () => {
   const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
   const [currentPage, setCurrentPage] = useState(1);
   const [reviewedPage, setReviewedPage] = useState(1);
+  const [currentActivityPage, setCurrentActivityPage] = useState(1);
   const plansPerPage = 5;
-    return breakdown;
-  };
+  const activitiesPerPage = 10;
 
   // Check admin permissions
   useEffect(() => {
