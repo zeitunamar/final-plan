@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, Building2, CheckCircle, XCircle, AlertCircle, Loader, Eye, Users, Calendar, LayoutGrid, DollarSign, TrendingUp, PieChart } from 'lucide-react';
+import { BarChart3, Building2, CheckCircle, XCircle, AlertCircle, Loader, Eye, Users, Calendar, LayoutGrid, DollarSign, TrendingUp, PieChart, ChevronLeft, ChevronRight, Activity, Briefcase, GraduationCap, Printer, Shield, ShoppingCart } from 'lucide-react';
 import { plans, organizations, auth } from '../lib/api';
 import { format } from 'date-fns';
 import { isAdmin } from '../types/user';
@@ -15,6 +15,9 @@ const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [isUserAdmin, setIsUserAdmin] = useState(false);
   const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [reviewedPage, setReviewedPage] = useState(1);
+  const plansPerPage = 5;
 
   // Check admin permissions
   useEffect(() => {
@@ -64,12 +67,15 @@ const AdminDashboard: React.FC = () => {
   }, []);
 
   // Fetch all plans
-  const { data: allPlansData, isLoading, error } = useQuery({
+  const { data: allPlansData, isLoading, error, isFetching } = useQuery({
     queryKey: ['admin-plans'],
     queryFn: async () => {
       try {
+        console.log('Fetching all plans for admin dashboard...');
         const response = await plans.getAll();
         const plansData = response.data?.results || response.data || [];
+        
+        console.log(`Loaded ${plansData.length} total plans`);
         
         // Map organization names
         plansData.forEach((plan: any) => {
@@ -85,10 +91,12 @@ const AdminDashboard: React.FC = () => {
       }
     },
     enabled: Object.keys(organizationsMap).length > 0,
-    retry: 2
+    retry: 1,
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes
+    refetchOnWindowFocus: false
   });
 
-  // Calculate simple statistics
+  // Calculate comprehensive statistics including activity budgets
   const calculateStats = () => {
     if (!allPlansData || !Array.isArray(allPlansData)) {
       return {
@@ -100,7 +108,16 @@ const AdminDashboard: React.FC = () => {
         organizationStats: {},
         totalBudgetAllOrgs: 0,
         totalFundingAllOrgs: 0,
-        totalGapAllOrgs: 0
+        totalGapAllOrgs: 0,
+        activityStats: {
+          training: { count: 0, budget: 0 },
+          meeting: { count: 0, budget: 0 },
+          workshop: { count: 0, budget: 0 },
+          supervision: { count: 0, budget: 0 },
+          procurement: { count: 0, budget: 0 },
+          printing: { count: 0, budget: 0 },
+          other: { count: 0, budget: 0 }
+        }
       };
     }
 
@@ -113,7 +130,16 @@ const AdminDashboard: React.FC = () => {
       organizationStats: {} as Record<string, any>,
       totalBudgetAllOrgs: 0,
       totalFundingAllOrgs: 0,
-      totalGapAllOrgs: 0
+      totalGapAllOrgs: 0,
+      activityStats: {
+        training: { count: 0, budget: 0 },
+        meeting: { count: 0, budget: 0 },
+        workshop: { count: 0, budget: 0 },
+        supervision: { count: 0, budget: 0 },
+        procurement: { count: 0, budget: 0 },
+        printing: { count: 0, budget: 0 },
+        other: { count: 0, budget: 0 }
+      }
     };
 
     // Organization statistics with REAL budget values from plans
@@ -126,6 +152,15 @@ const AdminDashboard: React.FC = () => {
       let sdgFunding = 0;
       let partnersFunding = 0;
       let otherFunding = 0;
+      const activityBreakdown = {
+        training: { count: 0, budget: 0 },
+        meeting: { count: 0, budget: 0 },
+        workshop: { count: 0, budget: 0 },
+        supervision: { count: 0, budget: 0 },
+        procurement: { count: 0, budget: 0 },
+        printing: { count: 0, budget: 0 },
+        other: { count: 0, budget: 0 }
+      };
       
       try {
         // Check multiple possible data structures for objectives
@@ -139,12 +174,6 @@ const AdminDashboard: React.FC = () => {
         } else if (plan.objectives_data && Array.isArray(plan.objectives_data)) {
           objectivesData = plan.objectives_data;
         }
-        
-        console.log(`Processing budget for plan ${plan.id}:`, {
-          organizationName: plan.organizationName || organizationsMap[plan.organization] || `Org ${plan.organization}`,
-          objectivesCount: objectivesData.length,
-          status: plan.status
-        });
         
         // Traverse objectives → initiatives → main_activities to get budget data
         objectivesData.forEach((objective: any) => {
@@ -164,7 +193,15 @@ const AdminDashboard: React.FC = () => {
                     partnersFunding += Number(activity.budget.partners_funding || 0);
                     otherFunding += Number(activity.budget.other_funding || 0);
                     
-                    console.log(`Activity budget found: ${activity.name} - $${estimatedCost}`);
+                    // Track activity type budgets
+                    const activityType = (activity.budget.activity_type || 'other').toLowerCase();
+                    if (activityBreakdown[activityType]) {
+                      activityBreakdown[activityType].count += 1;
+                      activityBreakdown[activityType].budget += estimatedCost;
+                    } else {
+                      activityBreakdown.other.count += 1;
+                      activityBreakdown.other.budget += estimatedCost;
+                    }
                   }
                 });
               }
@@ -172,17 +209,11 @@ const AdminDashboard: React.FC = () => {
           }
         });
       } catch (error) {
-        console.warn(`Error calculating budget for plan ${plan.id}:`, error);
+        console.warn(`Error calculating budget for plan ${plan.id}`);
       }
       
       const totalAvailableFunding = governmentFunding + sdgFunding + partnersFunding + otherFunding;
       const fundingGap = Math.max(0, totalBudget - totalAvailableFunding);
-      
-      console.log(`Budget calculation for plan ${plan.id}:`, {
-        totalBudget,
-        totalAvailableFunding,
-        fundingGap
-      });
       
       return {
         totalBudget,
@@ -191,7 +222,8 @@ const AdminDashboard: React.FC = () => {
         governmentBudget: governmentFunding,
         sdgBudget: sdgFunding,
         partnersBudget: partnersFunding,
-        otherBudget: otherFunding
+        otherBudget: otherFunding,
+        activityBreakdown
       };
     };
     
@@ -227,7 +259,16 @@ const AdminDashboard: React.FC = () => {
           approvedPlans: 0,
           submittedPlans: 0,
           draftPlans: 0,
-          rejectedPlans: 0
+          rejectedPlans: 0,
+          activityBreakdown: {
+            training: { count: 0, budget: 0 },
+            meeting: { count: 0, budget: 0 },
+            workshop: { count: 0, budget: 0 },
+            supervision: { count: 0, budget: 0 },
+            procurement: { count: 0, budget: 0 },
+            printing: { count: 0, budget: 0 },
+            other: { count: 0, budget: 0 }
+          }
         };
       }
 
@@ -244,11 +285,15 @@ const AdminDashboard: React.FC = () => {
         orgStats[orgName].partnersBudget += budgetData.partnersBudget;
         orgStats[orgName].otherBudget += budgetData.otherBudget;
         
-        console.log(`Added budget for ${orgName}:`, {
-          planId: plan.id,
-          status: plan.status,
-          totalBudget: budgetData.totalBudget,
-          availableFunding: budgetData.availableFunding
+        // Add activity breakdown to organization stats
+        Object.keys(budgetData.activityBreakdown).forEach(activityType => {
+          const activity = budgetData.activityBreakdown[activityType];
+          orgStats[orgName].activityBreakdown[activityType].count += activity.count;
+          orgStats[orgName].activityBreakdown[activityType].budget += activity.budget;
+          
+          // Add to global activity stats
+          stats.activityStats[activityType].count += activity.count;
+          stats.activityStats[activityType].budget += activity.budget;
         });
       }
 
@@ -261,11 +306,11 @@ const AdminDashboard: React.FC = () => {
       }
     });
 
-    // Filter out organizations with no budget data (only draft/rejected plans)
+    // Include ALL organizations that have submitted or approved plans
     const filteredOrgStats: Record<string, any> = {};
     Object.entries(orgStats).forEach(([orgName, orgData]: [string, any]) => {
-      // Only include organizations that have submitted or approved plans with budget data
-      if (orgData.totalBudget > 0 || orgData.submittedPlans > 0 || orgData.approvedPlans > 0) {
+      // Include organizations with submitted or approved plans (even if budget is 0)
+      if (orgData.submittedPlans > 0 || orgData.approvedPlans > 0) {
         filteredOrgStats[orgName] = orgData;
       }
     });
@@ -279,17 +324,104 @@ const AdminDashboard: React.FC = () => {
 
     stats.organizationStats = filteredOrgStats;
     
-    console.log('Final organization stats:', {
-      totalOrgs: Object.keys(filteredOrgStats).length,
-      totalBudget: stats.totalBudgetAllOrgs,
-      totalFunding: stats.totalFundingAllOrgs,
-      organizations: Object.keys(filteredOrgStats)
-    });
-    
     return stats;
   };
 
   const stats = calculateStats();
+  
+  // Pagination logic for all plans
+  const allPlans = allPlansData || [];
+  const totalPages = Math.ceil(allPlans.length / plansPerPage);
+  const startIndex = (currentPage - 1) * plansPerPage;
+  const endIndex = startIndex + plansPerPage;
+  const currentPlans = allPlans.slice(startIndex, endIndex);
+  
+  // Pagination logic for reviewed plans
+  const reviewedPlans = allPlans.filter(plan => ['APPROVED', 'REJECTED'].includes(plan.status));
+  const totalReviewedPages = Math.ceil(reviewedPlans.length / plansPerPage);
+  const reviewedStartIndex = (reviewedPage - 1) * plansPerPage;
+  const reviewedEndIndex = reviewedStartIndex + plansPerPage;
+  const currentReviewedPlans = reviewedPlans.slice(reviewedStartIndex, reviewedEndIndex);
+  
+  // Get activity type icon
+  const getActivityIcon = (type: string) => {
+    switch (type.toLowerCase()) {
+      case 'training': return <GraduationCap className="h-4 w-4" />;
+      case 'meeting': return <Users className="h-4 w-4" />;
+      case 'workshop': return <Briefcase className="h-4 w-4" />;
+      case 'supervision': return <Shield className="h-4 w-4" />;
+      case 'procurement': return <ShoppingCart className="h-4 w-4" />;
+      case 'printing': return <Printer className="h-4 w-4" />;
+      default: return <Activity className="h-4 w-4" />;
+    }
+  };
+  
+  // Pagination component
+  const PaginationControls = ({ currentPage, totalPages, onPageChange, label }: {
+    currentPage: number;
+    totalPages: number;
+    onPageChange: (page: number) => void;
+    label: string;
+  }) => (
+    <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200">
+      <div className="flex-1 flex justify-between sm:hidden">
+        <button
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+        >
+          Previous
+        </button>
+        <button
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+        >
+          Next
+        </button>
+      </div>
+      <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm text-gray-700">
+            Showing <span className="font-medium">{Math.min((currentPage - 1) * plansPerPage + 1, totalPages * plansPerPage)}</span> to{' '}
+            <span className="font-medium">{Math.min(currentPage * plansPerPage, totalPages * plansPerPage)}</span> of{' '}
+            <span className="font-medium">{totalPages * plansPerPage}</span> {label}
+          </p>
+        </div>
+        <div>
+          <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+            <button
+              onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+              <button
+                key={page}
+                onClick={() => onPageChange(page)}
+                className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                  page === currentPage
+                    ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                    : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          </nav>
+        </div>
+      </div>
+    </div>
+  );
 
   // Handle view plan
   const handleViewPlan = (plan: any) => {
@@ -321,8 +453,8 @@ const AdminDashboard: React.FC = () => {
 
   if (!isUserAdmin) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center p-8 bg-red-50 rounded-lg border border-red-200">
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <div className="text-center p-8 bg-red-50 rounded-xl border border-red-200 shadow-lg max-w-md">
           <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-red-800 mb-2">Access Denied</h3>
           <p className="text-red-600">You need admin permissions to access this dashboard.</p>
@@ -333,17 +465,20 @@ const AdminDashboard: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader className="h-8 w-8 animate-spin mr-2 text-blue-600" />
-        <span className="text-lg">Loading admin data...</span>
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <div className="text-center">
+          <Loader className="h-12 w-12 animate-spin mx-auto mb-4 text-blue-600" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Loading Dashboard</h3>
+          <p className="text-gray-600">Fetching plans and budget data...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center p-8 bg-red-50 rounded-lg border border-red-200">
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <div className="text-center p-8 bg-red-50 rounded-xl border border-red-200 shadow-lg max-w-md">
           <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-red-800 mb-2">Error Loading Data</h3>
           <p className="text-red-600">Failed to load admin dashboard data. Please refresh the page.</p>
@@ -353,95 +488,148 @@ const AdminDashboard: React.FC = () => {
   }
 
   return (
-    <div className="px-4 py-6 sm:px-0">
+    <div className="px-4 py-6 sm:px-6 lg:px-8 max-w-7xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Higher Officials Dashboard</h1>
-        <p className="text-gray-600">Overview of all plans across all Executives</p>
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white shadow-lg">
+          <h1 className="text-3xl font-bold mb-2">Higher Officials Dashboard</h1>
+          <p className="text-blue-100">Comprehensive overview of all plans and budgets across all Executives</p>
+          {isFetching && (
+            <div className="mt-2 flex items-center text-blue-200">
+              <Loader className="h-4 w-4 animate-spin mr-2" />
+              <span className="text-sm">Refreshing data...</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Summary Statistics Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center justify-between mb-1">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-500">Active Plans</h3>
-            <LayoutGrid className="h-5 w-5 text-blue-500" />
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <LayoutGrid className="h-5 w-5 text-blue-600" />
+            </div>
           </div>
-          <p className="text-3xl font-semibold text-blue-600">{stats.totalPlans}</p>
+          <p className="text-3xl font-bold text-blue-600">{stats.totalPlans}</p>
           <p className="text-xs text-gray-500 mt-1">Submitted + Approved</p>
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center justify-between mb-1">
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-500">Submitted</h3>
-            <Calendar className="h-5 w-5 text-amber-500" />
+            <div className="p-2 bg-amber-100 rounded-lg">
+              <Calendar className="h-5 w-5 text-amber-600" />
+            </div>
           </div>
-          <p className="text-3xl font-semibold text-amber-600">{stats.submittedPlans}</p>
+          <p className="text-3xl font-bold text-amber-600">{stats.submittedPlans}</p>
+          <p className="text-xs text-gray-500 mt-1">Awaiting Review</p>
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center justify-between mb-1">
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-500">Approved</h3>
-            <CheckCircle className="h-5 w-5 text-green-500" />
+            <div className="p-2 bg-green-100 rounded-lg">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+            </div>
           </div>
-          <p className="text-3xl font-semibold text-green-600">{stats.approvedPlans}</p>
+          <p className="text-3xl font-bold text-green-600">{stats.approvedPlans}</p>
+          <p className="text-xs text-gray-500 mt-1">Successfully Reviewed</p>
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center justify-between mb-1">
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-500">Rejected</h3>
-            <XCircle className="h-5 w-5 text-red-500" />
+            <div className="p-2 bg-red-100 rounded-lg">
+              <XCircle className="h-5 w-5 text-red-600" />
+            </div>
           </div>
-          <p className="text-3xl font-semibold text-red-600">{stats.rejectedPlans}</p>
+          <p className="text-3xl font-bold text-red-600">{stats.rejectedPlans}</p>
+          <p className="text-xs text-gray-500 mt-1">Needs Revision</p>
         </div>
       </div>
 
       {/* Budget Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center justify-between mb-1">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-500">Total Budget (All Orgs)</h3>
-            <DollarSign className="h-5 w-5 text-purple-500" />
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <DollarSign className="h-5 w-5 text-purple-600" />
+            </div>
           </div>
-          <p className="text-3xl font-semibold text-purple-600">ETB {stats.totalBudgetAllOrgs.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-purple-600">ETB {stats.totalBudgetAllOrgs.toLocaleString()}</p>
           <p className="text-xs text-gray-500 mt-1">Across all organizations</p>
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center justify-between mb-1">
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-500">Available Funding</h3>
-            <TrendingUp className="h-5 w-5 text-green-500" />
+            <div className="p-2 bg-green-100 rounded-lg">
+              <TrendingUp className="h-5 w-5 text-green-600" />
+            </div>
           </div>
-          <p className="text-3xl font-semibold text-green-600">ETB {stats.totalFundingAllOrgs.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-green-600">ETB {stats.totalFundingAllOrgs.toLocaleString()}</p>
           <p className="text-xs text-gray-500 mt-1">Total available funds</p>
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center justify-between mb-1">
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-500">Funding Gap</h3>
-            <AlertCircle className="h-5 w-5 text-red-500" />
+            <div className="p-2 bg-red-100 rounded-lg">
+              <AlertCircle className="h-5 w-5 text-red-600" />
+            </div>
           </div>
-          <p className="text-3xl font-semibold text-red-600">ETB {stats.totalGapAllOrgs.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-red-600">ETB {stats.totalGapAllOrgs.toLocaleString()}</p>
           <p className="text-xs text-gray-500 mt-1">Total funding needed</p>
         </div>
       </div>
 
+      {/* Activity Budget Breakdown */}
+      <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6 mb-8">
+        <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
+          <Activity className="h-6 w-6 mr-3 text-blue-600" />
+          Budget by Activity Type
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+          {Object.entries(stats.activityStats).map(([activityType, data]: [string, any]) => (
+            <div key={activityType} className="bg-gray-50 p-4 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center">
+                  {getActivityIcon(activityType)}
+                  <span className="ml-2 text-sm font-medium text-gray-700 capitalize">{activityType}</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-lg font-bold text-blue-600">{data.count}</p>
+                <p className="text-xs text-gray-500">Activities</p>
+                <p className="text-sm font-semibold text-green-600">ETB {data.budget.toLocaleString()}</p>
+                <p className="text-xs text-gray-500">Total Budget</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
         {/* Plan Status Chart */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-            <PieChart className="h-5 w-5 mr-2 text-blue-500" />
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+          <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
+            <PieChart className="h-6 w-6 mr-3 text-blue-600" />
             Plan Status Distribution
           </h3>
-          <div className="h-64">
+          <div className="h-80">
             <Doughnut
               data={{
                 labels: ['Approved', 'Submitted', 'Draft', 'Rejected'],
                 datasets: [{
                   data: [stats.approvedPlans, stats.submittedPlans, stats.draftPlans, stats.rejectedPlans],
-                  backgroundColor: ['#10b981', '#f59e0b', '#6b7280', '#ef4444'],
-                  borderWidth: 2,
-                  borderColor: '#ffffff'
+                  backgroundColor: ['#059669', '#d97706', '#6b7280', '#dc2626'],
+                  borderWidth: 3,
+                  borderColor: '#ffffff',
+                  hoverBackgroundColor: ['#047857', '#b45309', '#4b5563', '#b91c1c'],
+                  hoverBorderWidth: 4
                 }]
               }}
               options={{
@@ -449,7 +637,22 @@ const AdminDashboard: React.FC = () => {
                 maintainAspectRatio: false,
                 plugins: {
                   legend: {
-                    position: 'bottom'
+                    position: 'bottom',
+                    labels: {
+                      padding: 20,
+                      usePointStyle: true,
+                      font: {
+                        size: 12,
+                        weight: '500'
+                      }
+                    }
+                  },
+                  tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    titleColor: '#ffffff',
+                    bodyColor: '#ffffff',
+                    borderColor: '#374151',
+                    borderWidth: 1
                   }
                 }
               }}
@@ -458,47 +661,101 @@ const AdminDashboard: React.FC = () => {
         </div>
 
         {/* Budget by Organization Chart */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-            <BarChart3 className="h-5 w-5 mr-2 text-purple-500" />
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+          <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
+            <BarChart3 className="h-6 w-6 mr-3 text-purple-600" />
             Budget by Executives
           </h3>
-          <div className="h-64">
+          <div className="h-80">
             {Object.keys(stats.organizationStats).length > 0 ? (
               <Bar
                 data={{
-                  labels: Object.keys(stats.organizationStats).slice(0, 8), // Show top 8 orgs with budget
+                  labels: Object.keys(stats.organizationStats).map(name => 
+                    name.length > 15 ? name.substring(0, 15) + '...' : name
+                  ),
                   datasets: [
                     {
                       label: 'Total Budget',
-                      data: Object.values(stats.organizationStats).slice(0, 8).map((org: any) => org.totalBudget),
-                      backgroundColor: '#8b5cf6',
-                      borderColor: '#7c3aed',
-                      borderWidth: 1
+                      data: Object.values(stats.organizationStats).map((org: any) => org.totalBudget),
+                      backgroundColor: 'rgba(139, 92, 246, 0.8)',
+                      borderColor: '#8b5cf6',
+                      borderWidth: 2,
+                      borderRadius: 4,
+                      borderSkipped: false
                     },
                     {
                       label: 'Available Funding',
-                      data: Object.values(stats.organizationStats).slice(0, 8).map((org: any) => org.availableFunding),
-                      backgroundColor: '#10b981',
-                      borderColor: '#059669',
-                      borderWidth: 1
+                      data: Object.values(stats.organizationStats).map((org: any) => org.availableFunding),
+                      backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                      borderColor: '#10b981',
+                      borderWidth: 2,
+                      borderRadius: 4,
+                      borderSkipped: false
                     }
                   ]
                 }}
                 options={{
                   responsive: true,
                   maintainAspectRatio: false,
+                  interaction: {
+                    intersect: false,
+                    mode: 'index'
+                  },
                   plugins: {
                     legend: {
-                      position: 'top'
+                      position: 'top',
+                      labels: {
+                        padding: 20,
+                        usePointStyle: true,
+                        font: {
+                          size: 12,
+                          weight: '500'
+                        }
+                      }
+                    },
+                    tooltip: {
+                      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                      titleColor: '#ffffff',
+                      bodyColor: '#ffffff',
+                      borderColor: '#374151',
+                      borderWidth: 1,
+                      callbacks: {
+                        label: function(context) {
+                          return `${context.dataset.label}: ETB ${context.parsed.y.toLocaleString()}`;
+                        }
+                      }
                     }
                   },
                   scales: {
+                    x: {
+                      grid: {
+                        display: false
+                      },
+                      ticks: {
+                        maxRotation: 45,
+                        minRotation: 0,
+                        font: {
+                          size: 10
+                        }
+                      }
+                    },
                     y: {
                       beginAtZero: true,
+                      grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                      },
                       ticks: {
                         callback: function(value) {
-                          return 'ETB ' + (value as number).toLocaleString();
+                          const val = value as number;
+                          if (val >= 1000000) {
+                            return 'ETB ' + (val / 1000000).toFixed(1) + 'M';
+                          } else if (val >= 1000) {
+                            return 'ETB ' + (val / 1000).toFixed(0) + 'K';
+                          }
+                          return 'ETB ' + val.toLocaleString();
+                        },
+                        font: {
+                          size: 10
                         }
                       }
                     }
@@ -508,9 +765,9 @@ const AdminDashboard: React.FC = () => {
             ) : (
               <div className="flex items-center justify-center h-full text-gray-500">
                 <div className="text-center">
-                  <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-                  <p>No budget data available</p>
-                  <p className="text-sm">Organizations need submitted/approved plans with budget data</p>
+                  <BarChart3 className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                  <h4 className="text-lg font-medium text-gray-600 mb-2">No Budget Data Available</h4>
+                  <p className="text-sm text-gray-500">Organizations need submitted/approved plans with budget data</p>
                 </div>
               </div>
             )}
@@ -519,184 +776,334 @@ const AdminDashboard: React.FC = () => {
       </div>
 
       {/* All Plans Table */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mb-6">
-        <div className="p-4 sm:p-6">
-          <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">All Plans Overview</h3>
+      <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden mb-8">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-semibold text-gray-900 flex items-center">
+              <LayoutGrid className="h-6 w-6 mr-3 text-blue-600" />
+              All Plans Overview
+            </h3>
+            <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+              {allPlans.length} Total Plans
+            </div>
+          </div>
 
-          {!allPlansData || allPlansData.length === 0 ? (
-            <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-              <LayoutGrid className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          {!allPlans || allPlans.length === 0 ? (
+            <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+              <LayoutGrid className="h-16 w-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-1">No plans found</h3>
               <p className="text-gray-500">No plans have been created yet.</p>
             </div>
           ) : (
-            <div className="overflow-hidden overflow-x-auto border border-gray-200 rounded-lg">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Organization
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Planner
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Plan Type
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Period
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Submitted
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {allPlansData.map((plan: any) => (
-                    <tr key={plan.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <Building2 className="h-5 w-5 text-gray-400 mr-2" />
-                          <span className="text-sm font-medium text-gray-900">{getOrganizationName(plan)}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {plan.planner_name || 'Unknown'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {plan.type || 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {plan.from_date && plan.to_date ? 
-                          `${formatDate(plan.from_date)} - ${formatDate(plan.to_date)}` :
-                          'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          plan.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
-                          plan.status === 'SUBMITTED' ? 'bg-yellow-100 text-yellow-800' :
-                          plan.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {plan.status || 'DRAFT'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(plan.submitted_at)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => handleViewPlan(plan)}
-                          className="text-blue-600 hover:text-blue-900 flex items-center"
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </button>
-                      </td>
+            <>
+              <div className="overflow-hidden overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                    <tr>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Organization
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Planner
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Plan Type
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Period
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Submitted
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Actions
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {currentPlans.map((plan: any) => (
+                      <tr key={plan.id} className="hover:bg-blue-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="p-2 bg-blue-100 rounded-lg mr-3">
+                              <Building2 className="h-4 w-4 text-blue-600" />
+                            </div>
+                            <span className="text-sm font-medium text-gray-900">{getOrganizationName(plan)}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {plan.planner_name || 'Unknown'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {plan.type || 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {plan.from_date && plan.to_date ? 
+                            `${formatDate(plan.from_date)} - ${formatDate(plan.to_date)}` :
+                            'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            plan.status === 'APPROVED' ? 'bg-green-100 text-green-800 border border-green-200' :
+                            plan.status === 'SUBMITTED' ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
+                            plan.status === 'REJECTED' ? 'bg-red-100 text-red-800 border border-red-200' :
+                            'bg-gray-100 text-gray-800 border border-gray-200'
+                          }`}>
+                            {plan.status || 'DRAFT'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {formatDate(plan.submitted_at)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <button
+                            onClick={() => handleViewPlan(plan)}
+                            className="inline-flex items-center px-3 py-1 text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              
+              {/* Pagination for All Plans */}
+              {totalPages > 1 && (
+                <PaginationControls
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                  label="plans"
+                />
+              )}
+            </>
           )}
         </div>
       </div>
 
+      {/* Budget by Organization - Full Width Chart */}
+      <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6 mb-8">
+        <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
+          <BarChart3 className="h-6 w-6 mr-3 text-purple-600" />
+          Complete Budget Overview by Organization
+        </h3>
+        
+        {Object.keys(stats.organizationStats).length > 0 ? (
+          <div className="h-96">
+            <Bar
+              data={{
+                labels: Object.keys(stats.organizationStats).map(name => 
+                  name.length > 20 ? name.substring(0, 20) + '...' : name
+                ),
+                datasets: [
+                  {
+                    label: 'Total Budget Required',
+                    data: Object.values(stats.organizationStats).map((org: any) => org.totalBudget),
+                    backgroundColor: 'rgba(99, 102, 241, 0.8)',
+                    borderColor: '#6366f1',
+                    borderWidth: 2,
+                    borderRadius: 6,
+                    borderSkipped: false
+                  },
+                  {
+                    label: 'Available Funding',
+                    data: Object.values(stats.organizationStats).map((org: any) => org.availableFunding),
+                    backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                    borderColor: '#22c55e',
+                    borderWidth: 2,
+                    borderRadius: 6,
+                    borderSkipped: false
+                  },
+                  {
+                    label: 'Funding Gap',
+                    data: Object.values(stats.organizationStats).map((org: any) => org.fundingGap),
+                    backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                    borderColor: '#ef4444',
+                    borderWidth: 2,
+                    borderRadius: 6,
+                    borderSkipped: false
+                  }
+                ]
+              }}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                  intersect: false,
+                  mode: 'index'
+                },
+                plugins: {
+                  legend: {
+                    position: 'top',
+                    labels: {
+                      padding: 20,
+                      usePointStyle: true,
+                      font: {
+                        size: 12,
+                        weight: '500'
+                      }
+                    }
+                  },
+                  tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                    titleColor: '#ffffff',
+                    bodyColor: '#ffffff',
+                    borderColor: '#374151',
+                    borderWidth: 1,
+                    callbacks: {
+                      label: function(context) {
+                        return `${context.dataset.label}: ETB ${context.parsed.y.toLocaleString()}`;
+                      }
+                    }
+                  }
+                },
+                scales: {
+                  x: {
+                    grid: {
+                      display: false
+                    },
+                    ticks: {
+                      maxRotation: 45,
+                      minRotation: 0,
+                      font: {
+                        size: 11
+                      }
+                    }
+                  },
+                  y: {
+                    beginAtZero: true,
+                    grid: {
+                      color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    ticks: {
+                      callback: function(value) {
+                        const val = value as number;
+                        if (val >= 1000000) {
+                          return 'ETB ' + (val / 1000000).toFixed(1) + 'M';
+                        } else if (val >= 1000) {
+                          return 'ETB ' + (val / 1000).toFixed(0) + 'K';
+                        }
+                        return 'ETB ' + val.toLocaleString();
+                      },
+                      font: {
+                        size: 11
+                      }
+                    }
+                  }
+                }
+              }}
+            />
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-64 text-gray-500">
+            <div className="text-center">
+              <BarChart3 className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+              <h4 className="text-lg font-medium text-gray-600 mb-2">No Budget Data Available</h4>
+              <p className="text-sm text-gray-500">Organizations need submitted/approved plans with budget data</p>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Organization Performance Table */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-6">Executives Performance</h3>
+      <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6 mb-8">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-semibold text-gray-900 flex items-center">
+            <Building2 className="h-6 w-6 mr-3 text-green-600" />
+            Executives Performance
+          </h3>
+          <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+            {Object.keys(stats.organizationStats).length} Organizations with Budget Data
+          </div>
+        </div>
 
         {Object.keys(stats.organizationStats).length === 0 ? (
-          <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-            <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+            <BarChart3 className="h-16 w-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No Budget Data Available</h3>
             <p className="text-gray-500 mb-2">No organizations have submitted or approved plans with budget information yet.</p>
             <p className="text-sm text-gray-400">Budget data will appear here once organizations submit plans with complete budget details.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <div className="mb-4 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
-              <p className="flex items-center">
-                <BarChart3 className="h-4 w-4 mr-2 text-blue-500" />
-                Showing budget data for {Object.keys(stats.organizationStats).length} organization(s) with submitted or approved plans
-              </p>
-            </div>
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Organization
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Total Plans
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Approved
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Submitted
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Total Budget
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Available Funding
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Government Budget
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     SDG Budget
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Partners Budget
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Funding Gap
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {Object.entries(stats.organizationStats).map(([orgName, orgData]: [string, any]) => (
-                  <tr key={orgName} className="hover:bg-gray-50">
+                  <tr key={orgName} className="hover:bg-blue-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <Building2 className="h-5 w-5 text-gray-400 mr-2" />
+                        <div className="p-2 bg-blue-100 rounded-lg mr-3">
+                          <Building2 className="h-4 w-4 text-blue-600" />
+                        </div>
                         <span className="text-sm font-medium text-gray-900">{orgName}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {orgData.planCount}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm font-medium text-gray-900">{orgData.planCount}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {orgData.approvedPlans}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm font-medium text-green-600">{orgData.approvedPlans}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {orgData.submittedPlans}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm font-medium text-amber-600">{orgData.submittedPlans}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">
-                      ETB {orgData.totalBudget.toLocaleString()}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm font-bold text-blue-600">ETB {orgData.totalBudget.toLocaleString()}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
-                      ETB {orgData.availableFunding.toLocaleString()}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm font-bold text-green-600">ETB {orgData.availableFunding.toLocaleString()}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">
-                      ETB {orgData.governmentBudget.toLocaleString()}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm font-medium text-blue-600">ETB {orgData.governmentBudget.toLocaleString()}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-purple-600">
-                      ETB {orgData.sdgBudget.toLocaleString()}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm font-medium text-purple-600">ETB {orgData.sdgBudget.toLocaleString()}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-orange-600">
-                      ETB {orgData.partnersBudget.toLocaleString()}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm font-medium text-orange-600">ETB {orgData.partnersBudget.toLocaleString()}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">
-                      ETB {orgData.fundingGap.toLocaleString()}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm font-bold text-red-600">ETB {orgData.fundingGap.toLocaleString()}</span>
                     </td>
                   </tr>
                 ))}
@@ -704,6 +1111,108 @@ const AdminDashboard: React.FC = () => {
             </table>
           </div>
         )}
+      </div>
+
+      {/* Reviewed Plans Section */}
+      <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-semibold text-gray-900 flex items-center">
+              <CheckCircle className="h-6 w-6 mr-3 text-green-600" />
+              Reviewed Plans
+            </h3>
+            <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+              {reviewedPlans.length} Reviewed Plans
+            </div>
+          </div>
+
+          {reviewedPlans.length === 0 ? (
+            <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+              <CheckCircle className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-1">No reviewed plans</h3>
+              <p className="text-gray-500">No plans have been reviewed yet.</p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-hidden overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                    <tr>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Organization
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Planner
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Plan Type
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Reviewed Date
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {currentReviewedPlans.map((plan: any) => (
+                      <tr key={plan.id} className="hover:bg-blue-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="p-2 bg-blue-100 rounded-lg mr-3">
+                              <Building2 className="h-4 w-4 text-blue-600" />
+                            </div>
+                            <span className="text-sm font-medium text-gray-900">{getOrganizationName(plan)}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {plan.planner_name || 'Unknown'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {plan.type || 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            plan.status === 'APPROVED' ? 'bg-green-100 text-green-800 border border-green-200' :
+                            'bg-red-100 text-red-800 border border-red-200'
+                          }`}>
+                            {plan.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {formatDate(plan.updated_at)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <button
+                            onClick={() => handleViewPlan(plan)}
+                            className="inline-flex items-center px-3 py-1 text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              
+              {/* Pagination for Reviewed Plans */}
+              {totalReviewedPages > 1 && (
+                <PaginationControls
+                  currentPage={reviewedPage}
+                  totalPages={totalReviewedPages}
+                  onPageChange={setReviewedPage}
+                  label="reviewed plans"
+                />
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
