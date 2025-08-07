@@ -1,20 +1,43 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, PieChart, DollarSign, Building2, Users, FileText, TrendingUp, AlertCircle, Loader, RefreshCw, Eye, Calendar, CheckCircle, XCircle, Clock, GraduationCap, Briefcase, Shield, ShoppingCart, Printer, Zap, ChevronLeft, ChevronRight } from 'lucide-react';
+import { 
+  BarChart3, 
+  PieChart, 
+  DollarSign, 
+  Building2, 
+  Users, 
+  FileText, 
+  TrendingUp, 
+  AlertCircle, 
+  Loader, 
+  RefreshCw,
+  Eye,
+  Calendar,
+  CheckCircle,
+  XCircle,
+  Clock,
+  GraduationCap,
+  Briefcase,
+  Shield,
+  ShoppingCart,
+  Printer,
+  Zap,
+  ChevronLeft,
+  ChevronRight
+} from 'lucide-react';
+import { useLanguage } from '../lib/i18n/LanguageContext';
 import { plans, organizations, auth } from '../lib/api';
 import { format } from 'date-fns';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
 import { isAdmin } from '../types/user';
 
-// Simple translation function to avoid LanguageContext issues
-const t = (key: string) => key;
-
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
 const AdminDashboard: React.FC = () => {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
