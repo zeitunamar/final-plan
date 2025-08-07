@@ -827,7 +827,6 @@ const Planning: React.FC = () => {
       try {
         const existingPlansResponse = await api.get('/plans/', {
           params: { organization: userOrgId }
-      const selectedObjectiveIds = selectedObjectives.map(obj => obj.id);
         });
         
         const existingPlans = existingPlansResponse.data?.results || existingPlansResponse.data || [];
@@ -856,6 +855,8 @@ const Planning: React.FC = () => {
         // Continue with submission if check fails
       }
       
+      const selectedObjectiveIds = selectedObjectives.map(obj => obj.id);
+      
       // Prepare selected objectives weights
       const selectedObjectivesWeights: Record<string, number> = {};
       selectedObjectives.forEach(obj => {
@@ -883,7 +884,6 @@ const Planning: React.FC = () => {
       
       console.log('Submitting plan:', planData);
       console.log('Selected objective IDs:', selectedObjectiveIds);
-      console.log('Custom weights:', customWeights);
       console.log('Selected objectives weights:', selectedObjectivesWeights);
       
       // Create the plan
@@ -898,7 +898,6 @@ const Planning: React.FC = () => {
       
       // Check if it's a duplicate plan error
       if (error.response?.data?.detail?.includes('already been submitted') || 
-      console.error('Error response data:', error.response?.data);
           error.response?.data?.detail?.includes('duplicate')) {
         setPlanStatusInfo({
           status: 'SUBMITTED',
@@ -906,7 +905,14 @@ const Planning: React.FC = () => {
         });
         setShowStatusModal(true);
       } else {
-        setError(error.message || 'Failed to submit plan');
+        console.error('Error response data:', error.response?.data);
+        let errorMessage = 'Failed to submit plan';
+        if (error.response?.data?.detail) {
+          errorMessage = error.response.data.detail;
+        } else if (error.response?.data?.selected_objectives) {
+          errorMessage = 'Error with selected objectives: ' + JSON.stringify(error.response.data.selected_objectives);
+        }
+        setError(errorMessage);
       }
     } finally {
       setIsSubmitting(false);
@@ -1020,7 +1026,7 @@ const Planning: React.FC = () => {
               { key: 'planning', label: 'Planning' },
               { key: 'review', label: 'Review' }
             ].map((step, index) => (
-              <li key={step.key} className={`${index !== 4 ? 'pr-8 sm:pr-20' : ''} relative`}>
+              <li key={step.key} className={`${index !== 3 ? 'pr-8 sm:pr-20' : ''} relative`}>
                 <div className="flex items-center">
                   <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${
                     currentStep === step.key 
@@ -1038,7 +1044,7 @@ const Planning: React.FC = () => {
                     {step.label}
                   </span>
                 </div>
-                {index !== 4 && (
+                {index !== 3 && (
                   <div className="absolute top-4 left-4 -ml-px mt-0.5 h-full w-0.5 bg-gray-300" aria-hidden="true" />
                 )}
               </li>
@@ -1207,17 +1213,17 @@ const Planning: React.FC = () => {
                     }
                     
                     return (
-                  <InitiativeList
-                    parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
-                    parentType={selectedObjective ? 'objective' : 'program'}
+                      <InitiativeList
+                        parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
+                        parentType={selectedObjective ? 'objective' : 'program'}
                         parentWeight={effectiveWeight}
-                    selectedObjectiveData={selectedObjectiveData}
-                    onEditInitiative={handleEditInitiative}
-                    onSelectInitiative={handleSelectInitiative}
-                    planKey={`planning-${refreshKey}`}
-                    isUserPlanner={isUserPlanner}
-                    userOrgId={userOrgId}
-                  />
+                        selectedObjectiveData={selectedObjectiveData}
+                        onEditInitiative={handleEditInitiative}
+                        onSelectInitiative={handleSelectInitiative}
+                        planKey={`planning-${refreshKey}`}
+                        isUserPlanner={isUserPlanner}
+                        userOrgId={userOrgId}
+                      />
                     );
                   })()
                 ) : (
@@ -1337,8 +1343,6 @@ const Planning: React.FC = () => {
             <h3 className="text-lg font-medium text-gray-900 mb-4">
               {editingInitiative?.id ? 'Edit Initiative' : 'Create Initiative'}
             </h3>
-        } else if (error.response.data.selected_objectives) {
-          errorMessage = 'Error with selected objectives: ' + JSON.stringify(error.response.data.selected_objectives);
             
             {(() => {
               // Calculate the effective weight for the form
@@ -1388,16 +1392,16 @@ const Planning: React.FC = () => {
               });
               
               return (
-            <InitiativeForm
-              parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
-              parentType={selectedObjective ? 'objective' : 'program'}
-              parentWeight={formParentWeight}
-              selectedObjectiveData={selectedObjectiveData}
-              currentTotal={0}
-              onSubmit={handleSaveInitiative}
-              onCancel={handleCancel}
-              initialData={editingInitiative}
-            />
+                <InitiativeForm
+                  parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
+                  parentType={selectedObjective ? 'objective' : 'program'}
+                  parentWeight={formParentWeight}
+                  selectedObjectiveData={selectedObjectiveData}
+                  currentTotal={0}
+                  onSubmit={handleSaveInitiative}
+                  onCancel={handleCancel}
+                  initialData={editingInitiative}
+                />
               );
             })()}
           </div>
