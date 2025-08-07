@@ -827,6 +827,7 @@ const Planning: React.FC = () => {
       try {
         const existingPlansResponse = await api.get('/plans/', {
           params: { organization: userOrgId }
+      const selectedObjectiveIds = selectedObjectives.map(obj => obj.id);
         });
         
         const existingPlans = existingPlansResponse.data?.results || existingPlansResponse.data || [];
@@ -872,7 +873,7 @@ const Planning: React.FC = () => {
         planner_name: plannerName,
         type: selectedPlanType,
         strategic_objective: selectedObjectives[0].id, // Primary objective
-        selected_objectives: selectedObjectives,
+        selected_objectives: selectedObjectiveIds, // Send only IDs - CORRECT
         selected_objectives_weights: selectedObjectivesWeights,
         fiscal_year: new Date().getFullYear().toString(),
         from_date: fromDate,
@@ -881,6 +882,8 @@ const Planning: React.FC = () => {
       };
       
       console.log('Submitting plan:', planData);
+      console.log('Selected objective IDs:', selectedObjectiveIds);
+      console.log('Custom weights:', customWeights);
       console.log('Selected objectives weights:', selectedObjectivesWeights);
       
       // Create the plan
@@ -895,6 +898,7 @@ const Planning: React.FC = () => {
       
       // Check if it's a duplicate plan error
       if (error.response?.data?.detail?.includes('already been submitted') || 
+      console.error('Error response data:', error.response?.data);
           error.response?.data?.detail?.includes('duplicate')) {
         setPlanStatusInfo({
           status: 'SUBMITTED',
@@ -1333,6 +1337,8 @@ const Planning: React.FC = () => {
             <h3 className="text-lg font-medium text-gray-900 mb-4">
               {editingInitiative?.id ? 'Edit Initiative' : 'Create Initiative'}
             </h3>
+        } else if (error.response.data.selected_objectives) {
+          errorMessage = 'Error with selected objectives: ' + JSON.stringify(error.response.data.selected_objectives);
             
             {(() => {
               // Calculate the effective weight for the form

@@ -1361,11 +1361,19 @@ export const plans = {
       
       // Handle selected objectives and their custom weights
       if (formattedData.selected_objectives) {
-        // Convert to array of IDs if it's an array of objects
+        // Ensure selected_objectives is an array of IDs (numbers or strings)
         if (Array.isArray(formattedData.selected_objectives)) {
-          formattedData.selected_objectives = formattedData.selected_objectives.map((obj: any) => 
-            typeof obj === 'object' && obj.id ? obj.id : obj
-          );
+          formattedData.selected_objectives = formattedData.selected_objectives.map((item: any) => {
+            // If it's an object with id property, extract the id
+            if (typeof item === 'object' && item !== null && item.id !== undefined) {
+              return Number(item.id);
+            }
+            // If it's already a primitive value, convert to number
+            return Number(item);
+          });
+        } else {
+          // If it's not an array, make it an empty array
+          formattedData.selected_objectives = [];
         }
       }
       
@@ -1378,13 +1386,23 @@ export const plans = {
         formattedData.selected_objectives_weights = weights;
       }
       
-      console.log('Formatted plan data for API:', formattedData);
+      console.log('Formatted plan data for API:', {
+        ...formattedData,
+        selected_objectives: formattedData.selected_objectives,
+        selected_objectives_type: typeof formattedData.selected_objectives,
+        selected_objectives_length: formattedData.selected_objectives?.length
+      });
       
       await ensureCsrfToken();
       const response = await api.post(`/plans/`, formattedData);
       return response.data;
     } catch (error) {
       console.error('Failed to create plan:', error);
+      console.error('Error details:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message
+      });
       throw error;
     }
   },
