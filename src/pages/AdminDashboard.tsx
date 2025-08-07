@@ -18,6 +18,8 @@ const AdminDashboard: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [reviewedPage, setReviewedPage] = useState(1);
   const plansPerPage = 5;
+  const [currentActivityPage, setCurrentActivityPage] = useState(1);
+  const activitiesPerPage = 10;
 
   // Check admin permissions
   useEffect(() => {
@@ -95,6 +97,78 @@ const AdminDashboard: React.FC = () => {
     staleTime: 2 * 60 * 1000, // Cache for 2 minutes
     refetchOnWindowFocus: false
   });
+
+  // Calculate activity breakdown by organization
+  const calculateActivityBreakdown = () => {
+    const activityBreakdown: Array<{
+      organizationId: number;
+      organizationName: string;
+      activityType: string;
+      budget: number;
+      count: number;
+    }> = [];
+
+    if (!allPlansData || !Array.isArray(allPlansData)) return activityBreakdown;
+
+    const relevantPlans = allPlansData.filter((plan: any) => 
+      ['SUBMITTED', 'APPROVED'].includes(plan.status)
+    );
+
+    relevantPlans.forEach((plan: any) => {
+      const orgId = Number(plan.organization);
+      const orgName = getOrganizationName(plan);
+      
+      const objectives = plan.objectives || plan.selected_objectives_data || plan.objectives_data || [];
+      
+      objectives.forEach((objective: any) => {
+        const initiatives = objective.initiatives || [];
+        
+        initiatives.forEach((initiative: any) => {
+          const activities = initiative.main_activities || [];
+          
+          activities.forEach((activity: any) => {
+            if (!activity.budget) return;
+            
+            const activityType = activity.budget.activity_type || 'Other';
+            const budget = activity.budget.budget_calculation_type === 'WITH_TOOL' 
+              ? Number(activity.budget.estimated_cost_with_tool || 0)
+              : Number(activity.budget.estimated_cost_without_tool || 0);
+            
+            // Find existing entry or create new one
+            const existingIndex = activityBreakdown.findIndex(item => 
+              item.organizationId === orgId && item.activityType === activityType
+            );
+            
+            if (existingIndex >= 0) {
+              activityBreakdown[existingIndex].budget += budget;
+              activityBreakdown[existingIndex].count += 1;
+            } else {
+              activityBreakdown.push({
+                organizationId: orgId,
+                organizationName: orgName,
+                activityType,
+                budget,
+                count: 1
+              });
+            }
+          });
+        });
+      });
+    });
+
+    return activityBreakdown.sort((a, b) => 
+      a.organizationName.localeCompare(b.organizationName) || 
+      a.activityType.localeCompare(b.activityType)
+    );
+  };
+
+  const activityBreakdown = calculateActivityBreakdown();
+
+  // Pagination for activity breakdown
+  const totalActivityPages = Math.ceil(activityBreakdown.length / activitiesPerPage);
+  const startActivityIndex = (currentActivityPage - 1) * activitiesPerPage;
+  const endActivityIndex = startActivityIndex + activitiesPerPage;
+  const currentActivityData = activityBreakdown.slice(startActivityIndex, endActivityIndex);
 
   // Calculate comprehensive statistics including activity budgets
   const calculateStats = () => {
@@ -772,6 +846,173 @@ const AdminDashboard: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Budget by Activity Type Table */}
+      <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden mb-8">
+        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <div className="bg-white/20 p-2 rounded-lg mr-3">
+                <BarChart3 className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold text-white">Budget by Activity Type</h3>
+                <p className="text-purple-100 text-sm">Breakdown of budget allocation by organization and activity type</p>
+              </div>
+            </div>
+            <div className="bg-white/20 px-3 py-1 rounded-full">
+              <span className="text-white font-medium">{activityBreakdown.length} entries</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6">
+          {activityBreakdown.length === 0 ? (
+            <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+              <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Activity Budget Data</h3>
+              <p className="text-gray-500">No organizations have submitted plans with activity budgets yet.</p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Organization
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Activity Type
+                      </th>
+                      <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Count
+                      </th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Total Budget
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {currentActivityData.map((item, index) => (
+                      <tr key={`${item.organizationId}-${item.activityType}`} 
+                          className="hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="bg-blue-100 p-2 rounded-lg mr-3">
+                              <Building2 className="h-4 w-4 text-blue-600" />
+                            </div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {item.organizationName}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className={`p-2 rounded-lg mr-3 ${
+                              item.activityType === 'Training' ? 'bg-green-100' :
+                              item.activityType === 'Meeting' ? 'bg-blue-100' :
+                              item.activityType === 'Workshop' ? 'bg-purple-100' :
+                              item.activityType === 'Supervision' ? 'bg-orange-100' :
+                              item.activityType === 'Procurement' ? 'bg-indigo-100' :
+                              item.activityType === 'Printing' ? 'bg-pink-100' :
+                              'bg-gray-100'
+                            }`}>
+                              {item.activityType === 'Training' && <GraduationCap className="h-4 w-4 text-green-600" />}
+                              {item.activityType === 'Meeting' && <Users className="h-4 w-4 text-blue-600" />}
+                              {item.activityType === 'Workshop' && <Briefcase className="h-4 w-4 text-purple-600" />}
+                              {item.activityType === 'Supervision' && <Shield className="h-4 w-4 text-orange-600" />}
+                              {item.activityType === 'Procurement' && <ShoppingCart className="h-4 w-4 text-indigo-600" />}
+                              {item.activityType === 'Printing' && <Printer className="h-4 w-4 text-pink-600" />}
+                              {!['Training', 'Meeting', 'Workshop', 'Supervision', 'Procurement', 'Printing'].includes(item.activityType) && 
+                                <Activity className="h-4 w-4 text-gray-600" />}
+                            </div>
+                            <span className="text-sm font-medium text-gray-900 capitalize">
+                              {item.activityType}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                            {item.count}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                          <div className="text-sm font-semibold text-gray-900">
+                            ETB {item.budget.toLocaleString()}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Activity Breakdown Pagination */}
+              {totalActivityPages > 1 && (
+                <div className="flex items-center justify-between border-t border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 mt-6">
+                  <div className="flex-1 flex justify-between sm:hidden">
+                    <button
+                      onClick={() => setCurrentActivityPage(Math.max(1, currentActivityPage - 1))}
+                      disabled={currentActivityPage === 1}
+                      className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => setCurrentActivityPage(Math.min(totalActivityPages, currentActivityPage + 1))}
+                      disabled={currentActivityPage === totalActivityPages}
+                      className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                  <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm text-gray-700">
+                        Showing <span className="font-medium">{startActivityIndex + 1}</span> to{' '}
+                        <span className="font-medium">{Math.min(endActivityIndex, activityBreakdown.length)}</span> of{' '}
+                        <span className="font-medium">{activityBreakdown.length}</span> activity entries
+                      </p>
+                    </div>
+                    <div>
+                      <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                        <button
+                          onClick={() => setCurrentActivityPage(Math.max(1, currentActivityPage - 1))}
+                          disabled={currentActivityPage === 1}
+                          className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          <ChevronLeft className="h-5 w-5" />
+                        </button>
+                        {Array.from({ length: totalActivityPages }, (_, i) => i + 1).map((page) => (
+                          <button
+                            key={page}
+                            onClick={() => setCurrentActivityPage(page)}
+                            className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                              page === currentActivityPage
+                                ? 'z-10 bg-purple-50 border-purple-500 text-purple-600'
+                                : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setCurrentActivityPage(Math.min(totalActivityPages, currentActivityPage + 1))}
+                          disabled={currentActivityPage === totalActivityPages}
+                          className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          <ChevronRight className="h-5 w-5" />
+                        </button>
+                      </nav>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
