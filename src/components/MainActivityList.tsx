@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mainActivities } from '../lib/api';
 import { useLanguage } from '../lib/i18n/LanguageContext';
-import { BarChart3, AlertCircle, CheckCircle, Edit, Trash2, Lock, DollarSign, Calculator, FileText, Eye, Info, ArrowLeft, Send, X } from 'lucide-react';
+import { BarChart3, AlertCircle, CheckCircle, Edit, Trash2, Lock, DollarSign, Calculator, FileText, Eye, Info, ArrowLeft, Send, X, Loader } from 'lucide-react';
 import type { MainActivity, ActivityType, BudgetCalculationType } from '../types/plan';
 import { auth } from '../lib/api';
 import { isPlanner } from '../types/user';
@@ -630,6 +630,7 @@ const validateActivitiesMutation = useMutation({
       <div className="space-y-2">
         {filteredActivities.map((activity) => (
           <div
+            key={activity.id}
             onClick={() => onEditActivity({
               initiative: selectedInitiative?.id || '',
               name: '',
@@ -1157,7 +1158,7 @@ const validateActivitiesMutation = useMutation({
                   Close Preview
                 </button>
               </div>
-            {filteredActivities.length === 0 ? 'Create First Main Activity' : 'Create New Main Activity'}
+            </div>
           </div>
         </div>
       )}
