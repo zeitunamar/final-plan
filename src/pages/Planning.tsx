@@ -234,6 +234,29 @@ const Planning: React.FC = () => {
           return;
         }
 
+        // Check if user already has a submitted or approved plan
+        try {
+          const existingPlansResponse = await plans.getAll();
+          const userPlans = existingPlansResponse?.data?.filter(plan => 
+            authData.userOrganizations?.some(userOrg => userOrg.organization === plan.organization)
+          ) || [];
+          
+          const submittedOrApprovedPlan = userPlans.find(plan => 
+            plan.status === 'SUBMITTED' || plan.status === 'APPROVED'
+          );
+          
+          if (submittedOrApprovedPlan) {
+            if (submittedOrApprovedPlan.status === 'SUBMITTED') {
+              setError('You already have a plan submitted for review. Please wait for the review to complete before creating a new plan.');
+            } else if (submittedOrApprovedPlan.status === 'APPROVED') {
+              setError('You already have an approved plan. Contact your administrator if you need to create a new plan.');
+            }
+            return;
+          }
+        } catch (planCheckError) {
+          console.warn('Could not check existing plans:', planCheckError);
+          // Continue anyway - this is not critical
+        }
         // Get user's organization
         if (authData.userOrganizations && authData.userOrganizations.length > 0) {
           const userOrgId = authData.userOrganizations[0].organization;
@@ -548,7 +571,7 @@ const Planning: React.FC = () => {
   };
 
   const handleViewMyPlans = () => {
-    navigate('/dashboard');
+    navigate('/dashboard', { state: { activeTab: 'submitted' } });
   };
 
   const handleCreateNewPlan = () => {

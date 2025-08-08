@@ -630,7 +630,20 @@ const validateActivitiesMutation = useMutation({
       <div className="space-y-2">
         {filteredActivities.map((activity) => (
           <div
-            key={activity.id}
+            onClick={() => onEditActivity({
+              initiative: selectedInitiative?.id || '',
+              name: '',
+              weight: 0,
+              baseline: '',
+              target_type: 'cumulative',
+              q1_target: 0,
+              q2_target: 0,
+              q3_target: 0,
+              q4_target: 0,
+              annual_target: 0,
+              selected_months: [],
+              selected_quarters: []
+            } as MainActivity)}
             className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:border-blue-300 transition-colors"
           >
             <div className="flex items-center justify-between mb-2">
@@ -1144,7 +1157,7 @@ const validateActivitiesMutation = useMutation({
                   Close Preview
                 </button>
               </div>
-            </div>
+            {filteredActivities.length === 0 ? 'Create First Main Activity' : 'Create New Main Activity'}
           </div>
         </div>
       )}

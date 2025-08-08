@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import { organizations, auth } from '../lib/api';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 import { Info, LayoutList, Network, AlertCircle, Loader } from 'lucide-react';
@@ -13,12 +14,14 @@ import { AuthState } from '../types/user';
 function Dashboard() {
   const { t } = useLanguage();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState<'tree' | 'chart'>('tree');
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [authState, setAuthState] = useState<AuthState | null>(null);
   const [userOrganizations, setUserOrganizations] = useState<number[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'submitted'>('overview');
   const currentYear = new Date().getFullYear();
 
   // First, fetch current user and their organization access
@@ -52,6 +55,12 @@ function Dashboard() {
     fetchUserData();
   }, [navigate]);
 
+  // Check if we should show submitted plans tab based on navigation state
+  useEffect(() => {
+    if (location.state?.activeTab === 'submitted') {
+      setActiveTab('submitted');
+    }
+  }, [location.state]);
   // Then fetch organizations data
   const { data: orgData, isLoading, error, refetch } = useQuery({
     queryKey: ['organizations'],
@@ -137,6 +146,35 @@ function Dashboard() {
 
   return (
     <div className="px-4 py-6 sm:px-0">
+      {/* Tab Navigation */}
+      <div className="mb-6">
+        <div className="border-b border-gray-200">
+          <nav className="flex -mb-px">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`mr-8 py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'overview'
+                  ? 'border-green-600 text-green-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Organization Overview
+            </button>
+            <button
+              onClick={() => setActiveTab('submitted')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'submitted'
+                  ? 'border-green-600 text-green-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              My Submitted Plans
+            </button>
+          </nav>
+        </div>
+      </div>
+
+      {activeTab === 'overview' && (
       <div className="space-y-8">
         <div className="bg-white rounded-lg shadow">
           <div className="p-6">
@@ -201,6 +239,20 @@ function Dashboard() {
           </div>
         </div>
       </div>
+      )}
+
+      {activeTab === 'submitted' && (
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-6">
+            <h2 className="text-lg font-semibold mb-4">My Submitted Plans</h2>
+            <div className="text-center p-8 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+              <Info className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+              <p className="text-lg mb-2">Plan status tracking will be available here</p>
+              <p className="text-sm">You can view the status of your submitted plans in this section</p>
+            </div>
+          </div>
+        </div>
+      )}
       
       <footer className="bg-white border-t border-gray-200 py-4 mt-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
