@@ -1102,6 +1102,7 @@ const Planning: React.FC = () => {
                     onSelectInitiative={handleSelectInitiative}
                     isNewPlan={true}
                     planKey={refreshKey.toString()}
+                    onDeleteBudget={handleDeleteBudget}
                     isUserPlanner={isUserPlanner}
                     userOrgId={userOrgId}
                   />

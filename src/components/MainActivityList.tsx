@@ -77,6 +77,19 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
     }
   };
 
+  // Handle budget deletion
+  const handleDeleteBudget = async (activityId: string) => {
+    if (onDeleteBudget) {
+      try {
+        await onDeleteBudget(activityId);
+        // Refresh the activities list to show updated state
+        queryClient.invalidateQueries({ queryKey: ['main-activities', initiativeId, planKey] });
+      } catch (error) {
+        console.error('Error deleting budget:', error);
+      }
+    }
+  };
+
   // Handle activity validation
   const handleValidateActivities = () => {
     setValidationSuccess(null);
