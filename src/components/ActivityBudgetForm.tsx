@@ -59,8 +59,8 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
       activity: activity.id,
       budget_calculation_type: budgetCalculationType,
       activity_type: activityType,
-      estimated_cost_with_tool: Number(initialData?.estimated_cost_with_tool || initialData?.totalBudget || 0),
-      estimated_cost_without_tool: Number(initialData?.estimated_cost_without_tool || 0),
+      estimated_cost_with_tool: initialData?.estimated_cost_with_tool || initialData?.totalBudget || 0,
+      estimated_cost_without_tool: initialData?.estimated_cost_without_tool || 0,
       government_treasury: initialData?.government_treasury || 0,
       sdg_funding: initialData?.sdg_funding || 0,
       partners_funding: initialData?.partners_funding || 0,
@@ -96,10 +96,10 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
     if (initialRender) {
       if (budgetCalculationType === 'WITH_TOOL' && initialData?.estimated_cost_with_tool) {
         console.log('Setting initial WITH_TOOL cost (initialData.estimated_cost_with_tool):', initialData.estimated_cost_with_tool);
-        setValue('estimated_cost_with_tool', Number(initialData.estimated_cost_with_tool), { shouldValidate: true, shouldDirty: true });
+        setValue('estimated_cost_with_tool', initialData.estimated_cost_with_tool, { shouldValidate: true, shouldDirty: true });
       } else if (budgetCalculationType === 'WITH_TOOL' && initialData?.totalBudget) {
         console.log('Setting initial WITH_TOOL cost from totalBudget:', initialData.totalBudget);
-        setValue('estimated_cost_with_tool', Number(initialData.totalBudget), { shouldValidate: true, shouldDirty: true });
+        setValue('estimated_cost_with_tool', initialData.totalBudget, { shouldValidate: true, shouldDirty: true });
       } else if (budgetCalculationType === 'WITH_TOOL') {
         // Last resort: check if there's any budget value we can use
         const possibleBudgetValue = initialData?.estimated_cost || 
@@ -111,13 +111,13 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
         
         if (possibleBudgetValue && possibleBudgetValue > 0) {
           console.log('Setting initial WITH_TOOL cost from alternative source:', possibleBudgetValue);
-          setValue('estimated_cost_with_tool', Number(possibleBudgetValue), { shouldValidate: true, shouldDirty: true });
+          setValue('estimated_cost_with_tool', possibleBudgetValue, { shouldValidate: true, shouldDirty: true });
         }
       }
       
       if (budgetCalculationType === 'WITHOUT_TOOL' && initialData?.estimated_cost_without_tool) {
         console.log('Setting initial WITHOUT_TOOL cost (initialData.estimated_cost_without_tool):', initialData.estimated_cost_without_tool);
-        setValue('estimated_cost_without_tool', Number(initialData.estimated_cost_without_tool), { shouldValidate: true, shouldDirty: true });
+        setValue('estimated_cost_without_tool', initialData.estimated_cost_without_tool, { shouldValidate: true, shouldDirty: true });
       }
       
       setInitialRender(false);
@@ -125,9 +125,9 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
        // Force re-calculation after initial render
        setTimeout(() => {
          const updatedWithToolCost = budgetCalculationType === 'WITH_TOOL' ? 
-           Number(initialData?.estimated_cost_with_tool || 0) : 0;
+           (initialData?.estimated_cost_with_tool || 0) : 0;
          const updatedWithoutToolCost = budgetCalculationType === 'WITHOUT_TOOL' ? 
-           Number(initialData?.estimated_cost_without_tool || 0) : 0;
+           (initialData?.estimated_cost_without_tool || 0) : 0;
          const updatedEstimatedCost = budgetCalculationType === 'WITH_TOOL' ? 
            updatedWithToolCost : updatedWithoutToolCost;
          console.log('Updated estimated cost after initial render:', updatedEstimatedCost);
@@ -156,16 +156,16 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
 
   // Calculate totals
   // Make sure we have valid numeric values
-  const totalFunding = Number(governmentTreasury || 0) + Number(sdgFunding || 0) + 
-                        Number(calculatedPartnersFunding || 0) + Number(otherFunding || 0);
+  const totalFunding = (governmentTreasury || 0) + (sdgFunding || 0) + 
+                        (calculatedPartnersFunding || 0) + (otherFunding || 0);
   
   // Calculate estimated cost based on budget type, ensuring we get a positive number
   const estimatedCost = budgetCalculationType === 'WITH_TOOL' 
-    ? Math.max(Number(withToolCost || 0), 
-              Number(initialData?.estimated_cost_with_tool || 0), 
-              Number(initialData?.totalBudget || 0),
-              Number(initialData?.estimated_cost || 0))
-    : Math.max(Number(withoutToolCost || 0), Number(initialData?.estimated_cost_without_tool || 0));
+    ? Math.max(withToolCost || 0, 
+              initialData?.estimated_cost_with_tool || 0, 
+              initialData?.totalBudget || 0,
+              initialData?.estimated_cost || 0)
+    : Math.max(withoutToolCost || 0, initialData?.estimated_cost_without_tool || 0);
               
   const fundingGap = Math.max(0, estimatedCost - totalFunding);
 
@@ -373,10 +373,15 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
               <input
                 type="number"
                 step="0.01"
+                min="0"
                 {...register('estimated_cost_without_tool', {
                   required: 'This field is required',
                   min: { value: 0, message: 'Value must be positive' },
-                  valueAsNumber: true
+                  setValueAs: (value) => {
+                    const numValue = parseFloat(value);
+                    console.log('Manual cost input changed to:', numValue);
+                    return isNaN(numValue) ? 0 : numValue;
+                  }
                 })}
                 className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-7 pr-12 sm:text-sm border-gray-300 rounded-md"
                 placeholder="0.00"

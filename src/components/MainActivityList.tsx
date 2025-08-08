@@ -315,6 +315,11 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                   <div className="flex items-center">
                     <DollarSign className="h-4 w-4 text-green-600 mr-1" />
                     <span className="text-sm font-medium text-gray-700">Budget</span>
+                    {activity.budget.activity_type && (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                        {activity.budget.activity_type}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="text-sm font-medium text-green-600">
@@ -323,20 +328,6 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                         : activity.budget.estimated_cost_without_tool
                       ).toLocaleString()}
                     </div>
-                    {isUserPlanner && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm('Are you sure you want to delete this budget? This action cannot be undone.')) {
-                            onDeleteBudget(activity.id);
-                          }
-                        }}
-                        className="text-xs text-red-600 hover:text-red-800 flex items-center"
-                        title="Delete Budget"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    )}
                   </div>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-500">
@@ -345,6 +336,44 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                   <div>SDG: ${activity.budget.sdg_funding.toLocaleString()}</div>
                   <div>Other: ${activity.budget.other_funding.toLocaleString()}</div>
                 </div>
+                
+                {/* Budget Action Buttons */}
+                {isUserPlanner && (
+                  <div className="mt-3 flex justify-end space-x-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onViewBudget) onViewBudget(activity);
+                      }}
+                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center px-2 py-1 bg-blue-50 rounded"
+                    >
+                      <Eye className="h-3 w-3 mr-1" />
+                      View
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onEditBudget) onEditBudget(activity);
+                      }}
+                      className="text-xs text-purple-600 hover:text-purple-800 flex items-center px-2 py-1 bg-purple-50 rounded"
+                    >
+                      <Edit className="h-3 w-3 mr-1" />
+                      Edit
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm('Are you sure you want to delete this budget? This action cannot be undone.')) {
+                          onDeleteBudget?.(activity.id);
+                        }
+                      }}
+                      className="text-xs text-red-600 hover:text-red-800 flex items-center px-2 py-1 bg-red-50 rounded"
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      Delete
+                    </button>
+                  </div>
+                )}
               </div>
             )}
             
@@ -362,31 +391,8 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                     Edit
                   </button>
                   
-                  {/* Budget Actions */}
-                  {activity.budget ? (
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onViewBudget) onViewBudget(activity);
-                        }}
-                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        View Budget
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onEditBudget) onEditBudget(activity);
-                        }}
-                        className="text-xs text-purple-600 hover:text-purple-800 flex items-center"
-                      >
-                        <Edit className="h-4 w-4 mr-1" />
-                        Edit Budget
-                      </button>
-                    </div>
-                  ) : (
+                  {/* Add Budget Button - Only show when no budget exists */}
+                  {!activity.budget && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

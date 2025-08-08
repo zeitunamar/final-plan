@@ -562,6 +562,36 @@ const Planning: React.FC = () => {
       console.log('Deleting budget for activity:', activityId);
       console.log('Deleting budget for activity:', activityId);
       
+      // Find the activity and its budget
+      let budgetToDelete = null;
+      
+      // Search through all objectives and initiatives to find the budget
+      for (const objective of selectedObjectives) {
+        if (!objective.initiatives) continue;
+        
+        for (const initiative of objective.initiatives) {
+          if (!initiative.main_activities) continue;
+          
+          const activity = initiative.main_activities.find(a => a.id === activityId);
+          if (activity?.budget) {
+            budgetToDelete = activity.budget;
+            break;
+          }
+        }
+        
+        if (budgetToDelete) break;
+      }
+      
+      if (!budgetToDelete?.id) {
+        setError('Budget not found for deletion');
+        return;
+      }
+      
+      console.log('Deleting budget with ID:', budgetToDelete.id);
+      
+      // Delete the budget using the budget ID
+      await activityBudgets.delete(budgetToDelete.id);
+      
       // Call the API to delete the budget
       const response = await api.delete(`/activity-budgets/?activity=${activityId}`);
       console.log('Budget deletion response:', response);
@@ -763,6 +793,16 @@ const Planning: React.FC = () => {
         selected_objectives_count: planData.selected_objectives.length,
         weights_count: Object.keys(planData.selected_objectives_weights).length
       });
+      queryClient.invalidateQueries({ 
+        queryKey: ['activity-budgets'] 
+      });
+      
+      // Also refresh the selected initiative data
+      if (selectedInitiative?.id) {
+        queryClient.invalidateQueries({ 
+          queryKey: ['initiatives', selectedInitiative.id] 
+        });
+      }
 
       // Submit plan with retry logic for production reliability
       let submitAttempt = 0;
