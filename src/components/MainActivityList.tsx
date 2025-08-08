@@ -19,6 +19,7 @@ interface MainActivityListProps {
   planKey?: string;
   isUserPlanner: boolean;
   userOrgId: number | null;
+  onDeleteBudget?: (activityId: string) => void;
 }
 
 const MainActivityList: React.FC<MainActivityListProps> = ({ 
@@ -32,7 +33,8 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
   isNewPlan = false,
   planKey = 'default',
   isUserPlanner,
-  userOrgId
+  userOrgId,
+  onDeleteBudget
 }) => {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
@@ -312,11 +314,27 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                     <DollarSign className="h-4 w-4 text-green-600 mr-1" />
                     <span className="text-sm font-medium text-gray-700">Budget</span>
                   </div>
-                  <div className="text-sm font-medium text-green-600">
-                    ${(activity.budget.budget_calculation_type === 'WITH_TOOL' 
-                      ? activity.budget.estimated_cost_with_tool 
-                      : activity.budget.estimated_cost_without_tool
-                    ).toLocaleString()}
+                  <div className="flex items-center space-x-2">
+                    <div className="text-sm font-medium text-green-600">
+                      ${(activity.budget.budget_calculation_type === 'WITH_TOOL' 
+                        ? activity.budget.estimated_cost_with_tool 
+                        : activity.budget.estimated_cost_without_tool
+                      ).toLocaleString()}
+                    </div>
+                    {isUserPlanner && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm('Are you sure you want to delete this budget? This action cannot be undone.')) {
+                            handleDeleteBudget(activity.id);
+                          }
+                        }}
+                        className="text-xs text-red-600 hover:text-red-800 flex items-center"
+                        title="Delete Budget"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-500">
