@@ -1341,6 +1341,9 @@ export const plans = {
   
   async create(data: any) {
     try {
+      console.log('=== PLANS API CREATE START ===');
+      console.log('Input data:', data);
+      
       const formattedData = {...data};
       
       if (formattedData.organization) {
@@ -1361,12 +1364,178 @@ export const plans = {
       
       // Handle selected objectives and their custom weights
       if (formattedData.selected_objectives) {
-        // Ensure selected_objectives is an array of IDs (numbers or strings)
+        console.log('Processing selected_objectives:', formattedData.selected_objectives);
+        
+        // Ensure selected_objectives is an array of valid IDs
         if (Array.isArray(formattedData.selected_objectives)) {
-          formattedData.selected_objectives = formattedData.selected_objectives.map((item: any) => {
-            // If it's an object with id property, extract the id
-            if (typeof item === 'object' && item !== null && item.id !== undefined) {
-              return Number(item.id);
+          const validIds = formattedData.selected_objectives
+            .filter(item => item !== null && item !== undefined) // Remove null/undefined
+            .map((item: any) => {
+              // If it's an object with id property, extract the id
+              if (typeof item === 'object' && item !== null && item.id !== undefined) {
+                const id = Number(item.id);
+                if (isNaN(id)) {
+                  console.error('Invalid objective ID in object:', item);
+                  return null;
+                }
+                return id;
+              }
+              // If it's already a primitive value, convert to number
+              const id = Number(item);
+              if (isNaN(id)) {
+                console.error('Invalid objective ID:', item);
+                return null;
+              }
+              return id;
+            })
+            .filter(id => id !== null && id > 0); // Remove invalid IDs
+          
+          formattedData.selected_objectives = validIds;
+          console.log('Processed selected_objectives:', validIds);
+          
+          // Validate that we didn't lose any objectives
+          if (validIds.length !== data.selected_objectives.length) {
+            console.error('Objective count mismatch:', {
+              original: data.selected_objectives.length,
+              processed: validIds.length,
+              originalData: data.selected_objectives,
+              processedData: validIds
+            });
+            throw new Error(`Data integrity error: Lost ${data.selected_objectives.length - validIds.length} objectives during processing`);
+          }
+        } else {
+          console.error('selected_objectives is not an array:', formattedData.selected_objectives);
+          formattedData.selected_objectives = [];
+        }
+      } else {
+        console.log('No selected_objectives provided');
+        formattedData.selected_objectives = [];
+      }
+      
+      if (formattedData.selected_objectives_weights) {
+        console.log('Processing selected_objectives_weights:', formattedData.selected_objectives_weights);
+        
+        // Ensure weights are properly formatted and validate against objectives
+        const weights: Record<string, number> = {};
+        let weightCount = 0;
+        
+        Object.entries(formattedData.selected_objectives_weights).forEach(([key, value]) => {
+          const weight = Number(value);
+          if (!isNaN(weight) && weight > 0) {
+            weights[key] = weight;
+            weightCount++;
+          } else {
+            console.error('Invalid weight for objective:', key, value);
+          }
+        });
+        
+        formattedData.selected_objectives_weights = weights;
+        console.log('Processed weights:', weights, 'Count:', weightCount);
+        
+        // Validate that we have weights for all objectives
+        if (weightCount !== formattedData.selected_objectives.length) {
+          console.error('Weight count mismatch:', {
+            objectives: formattedData.selected_objectives.length,
+            weights: weightCount,
+            objectiveIds: formattedData.selected_objectives,
+            weightKeys: Object.keys(weights)
+          });
+          throw new Error(`Weight mapping error: Expected ${formattedData.selected_objectives.length} weights but got ${weightCount}`);
+        }
+      } else {
+        console.log('No selected_objectives_weights provided');
+        formattedData.selected_objectives_weights = {};
+      }
+      
+      console.log('=== FINAL FORMATTED DATA ===');
+      console.log('Final plan data:', {
+        ...formattedData,
+        selected_objectives_summary: {
+          count: formattedData.selected_objectives.length,
+          ids: formattedData.selected_objectives,
+          weights_count: Object.keys(formattedData.selected_objectives_weights).length
+        }
+      });
+      
+      // Ensure CSRF token is fresh before submission
+      await ensureCsrfToken();
+      
+      // Submit with retry logic for production reliability
+      let response;
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          console.log(`Plan submission attempt ${retryCount + 1}/${maxRetries}`);
+          
+          response = await api.post('/plans/', formattedData, {
+            timeout: 15000, // 15 second timeout
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': Cookies.get('csrftoken') || '',
+              'Cache-Control': 'no-cache'
+            }
+          });
+          
+          console.log('Plan submission successful on attempt:', retryCount + 1);
+          break;
+          
+        } catch (attemptError) {
+          retryCount++;
+          console.warn(`Plan submission attempt ${retryCount} failed:`, attemptError);
+          
+          if (retryCount >= maxRetries) {
+            throw attemptError;
+          }
+          
+          // Wait before retry with exponential backoff
+          const waitTime = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+          console.log(`Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          
+          // Refresh CSRF token before retry
+          try {
+            await ensureCsrfToken();
+          } catch (csrfError) {
+            console.warn('Failed to refresh CSRF token:', csrfError);
+          }
+        }
+      }
+      
+      if (!response || !response.data) {
+        throw new Error('No response data received from server');
+      }
+      
+      console.log('=== PLAN CREATION SUCCESS ===');
+      console.log('Created plan:', response.data);
+      
+      // Verify that all objectives were saved
+      if (response.data.selected_objectives) {
+        const savedObjectiveIds = response.data.selected_objectives;
+        console.log('Saved objective IDs:', savedObjectiveIds);
+        
+        if (savedObjectiveIds.length !== selectedObjectiveIds.length) {
+          console.error('OBJECTIVE COUNT MISMATCH:', {
+            submitted: selectedObjectiveIds.length,
+            saved: savedObjectiveIds.length,
+            submittedIds: selectedObjectiveIds,
+            savedIds: savedObjectiveIds
+          });
+          throw new Error(`Objective save error: Submitted ${selectedObjectiveIds.length} objectives but only ${savedObjectiveIds.length} were saved`);
+        }
+        
+        // Verify all IDs match
+        const missingIds = selectedObjectiveIds.filter(id => !savedObjectiveIds.includes(id));
+        if (missingIds.length > 0) {
+          console.error('MISSING OBJECTIVE IDS:', missingIds);
+          throw new Error(`Missing objectives in saved plan: ${missingIds.join(', ')}`);
+        }
+        
+        console.log('✓ All objectives verified successfully saved');
+      }
+      
+      return response.data;
             }
             // If it's already a primitive value, convert to number
             return Number(item);
@@ -1397,11 +1566,14 @@ export const plans = {
       const response = await api.post(`/plans/`, formattedData);
       return response.data;
     } catch (error) {
-      console.error('Failed to create plan:', error);
-      console.error('Error details:', {
+      console.error('=== PLAN CREATION FAILED ===');
+      console.error('Plan creation error:', error);
+      console.error('Detailed error info:', {
         status: error.response?.status,
         data: error.response?.data,
-        message: error.message
+        message: error.message,
+        selectedObjectivesCount: data.selected_objectives?.length || 0,
+        weightsCount: data.selected_objectives_weights ? Object.keys(data.selected_objectives_weights).length : 0
       });
       throw error;
     }

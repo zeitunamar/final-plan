@@ -1,4 +1,4 @@
-              <div className="text-center p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+<div className="text-center p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
                       <DollarSign className="h-6 w-6 text-gray-400 mx-auto mb-2" />
                       <p className="text-gray-500 text-sm">Select an initiative to view main activities</p>
                     </div>

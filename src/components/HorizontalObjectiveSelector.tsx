@@ -221,12 +221,24 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
     setValidationError(null);
     
     try {
+      console.log('=== SAVING OBJECTIVE WEIGHTS ===');
+      console.log('Selected objectives before save:', selectedObjectives.map(obj => ({
+        id: obj.id,
+        title: obj.title,
+        weight: obj.weight,
+        planner_weight: obj.planner_weight,
+        effective_weight: obj.effective_weight,
+        newWeight: objectiveWeights[obj.id]
+      })));
+      
       // Clear any existing planner_weight values from objectives not selected
       try {
         const allObjectives = await objectives.getAll();
         const allObjectiveIds = allObjectives?.data?.map(obj => obj.id) || [];
         const selectedObjectiveIds = selectedObjectives.map(obj => obj.id);
         const unselectedObjectiveIds = allObjectiveIds.filter(id => !selectedObjectiveIds.includes(id));
+        
+        console.log('Clearing planner_weight for unselected objectives:', unselectedObjectiveIds.length);
         
         // Clear planner_weight for unselected objectives
         for (const objId of unselectedObjectiveIds) {
@@ -254,10 +266,12 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
         // Continue anyway - the API client should retry if needed
       }
       
-      // Save each objective's weight to the database
-      const savePromises = selectedObjectives.map(obj => {
+      // Save each objective's weight to the database with better error handling
+      const savePromises = selectedObjectives.map(async (obj, index) => {
         const newWeight = objectiveWeights[obj.id];
         const originalEffectiveWeight = getEffectiveWeight(obj);
+        
+        console.log(`Saving objective ${index + 1}/${selectedObjectives.length}: ${obj.title} (ID: ${obj.id}) with weight ${newWeight}`);
         
         // Always save the planner weight for default objectives if they're selected
         if (obj.is_default) {
@@ -271,7 +285,14 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
             is_default: obj.is_default,
           };
 
-          return updateObjectiveMutation.mutateAsync(objectiveData);
+          try {
+            const result = await updateObjectiveMutation.mutateAsync(objectiveData);
+            console.log(`✓ Saved default objective ${obj.id} with planner_weight ${newWeight}`);
+            return result;
+          } catch (error) {
+            console.error(`✗ Failed to save default objective ${obj.id}:`, error);
+            throw error;
+          }
         }
         
         // For non-default objectives, update the weight directly
@@ -286,28 +307,42 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
             is_default: obj.is_default
           };
 
-          return updateObjectiveMutation.mutateAsync(objectiveData);
+          try {
+            const result = await updateObjectiveMutation.mutateAsync(objectiveData);
+            console.log(`✓ Saved custom objective ${obj.id} with weight ${newWeight}`);
+            return result;
+          } catch (error) {
+            console.error(`✗ Failed to save custom objective ${obj.id}:`, error);
+            throw error;
+          }
         }
 
-        return Promise.resolve(); // No update needed
+        console.log(`No update needed for objective ${obj.id}`);
+        return Promise.resolve();
       });
       
       try {
+        console.log('Waiting for all objective saves to complete...');
         // Wait for all saves to complete
         await Promise.all(savePromises);
+        console.log('✓ All objective weights saved successfully');
         
         // Refresh objectives data to get updated weights
         await queryClient.invalidateQueries({ queryKey: ['objectives'] });
+        console.log('✓ Objectives cache invalidated');
         
         // Now proceed to planning with the user's chosen weights
+        console.log('=== PROCEEDING TO PLANNING ===');
         onProceed();
       } catch (err) {
-        console.error('Error saving one or more objectives:', err);
-        setValidationError('Failed to save all objective weights. Please try again.');
+        console.error('=== OBJECTIVE SAVE FAILED ===');
+        console.error('Error saving objectives:', err);
+        setValidationError(`Failed to save objective weights: ${err.message || 'Unknown error'}. Please try again.`);
         throw err;
       }
     } catch (error) {
-      console.error('Failed to save objective weights:', error instanceof Error ? error.message : error);
+      console.error('=== WEIGHT SAVE PROCESS FAILED ===');
+      console.error('Weight save error:', error instanceof Error ? error.message : error);
       
       // Extract more detailed error message
       let errorMessage = 'Failed to save objective weights. Please try again.';
