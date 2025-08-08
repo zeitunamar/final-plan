@@ -59,8 +59,8 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
       activity: activity.id,
       budget_calculation_type: budgetCalculationType,
       activity_type: activityType,
-      estimated_cost_with_tool: initialData?.estimated_cost_with_tool || initialData?.totalBudget || 0,
-      estimated_cost_without_tool: initialData?.estimated_cost_without_tool || 0,
+      estimated_cost_with_tool: Number(initialData?.estimated_cost_with_tool || initialData?.totalBudget || 0),
+      estimated_cost_without_tool: Number(initialData?.estimated_cost_without_tool || 0),
       government_treasury: initialData?.government_treasury || 0,
       sdg_funding: initialData?.sdg_funding || 0,
       partners_funding: initialData?.partners_funding || 0,
@@ -94,13 +94,13 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
   // Make sure the correct estimated cost is set on initial render
   useEffect(() => {
     if (initialRender) {
-      if (budgetCalculationType === 'WITH_TOOL' && withToolCost === 0 && initialData?.estimated_cost_with_tool) {
+      if (budgetCalculationType === 'WITH_TOOL' && initialData?.estimated_cost_with_tool) {
         console.log('Setting initial WITH_TOOL cost (initialData.estimated_cost_with_tool):', initialData.estimated_cost_with_tool);
-        setValue('estimated_cost_with_tool', Number(initialData.estimated_cost_with_tool), { shouldValidate: true });
-      } else if (budgetCalculationType === 'WITH_TOOL' && withToolCost === 0 && initialData?.totalBudget) {
+        setValue('estimated_cost_with_tool', Number(initialData.estimated_cost_with_tool), { shouldValidate: true, shouldDirty: true });
+      } else if (budgetCalculationType === 'WITH_TOOL' && initialData?.totalBudget) {
         console.log('Setting initial WITH_TOOL cost from totalBudget:', initialData.totalBudget);
-        setValue('estimated_cost_with_tool', Number(initialData.totalBudget), { shouldValidate: true });
-      } else if (budgetCalculationType === 'WITH_TOOL' && withToolCost === 0) {
+        setValue('estimated_cost_with_tool', Number(initialData.totalBudget), { shouldValidate: true, shouldDirty: true });
+      } else if (budgetCalculationType === 'WITH_TOOL') {
         // Last resort: check if there's any budget value we can use
         const possibleBudgetValue = initialData?.estimated_cost || 
                                     initialData?.training_details?.totalBudget || 
@@ -111,13 +111,13 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
         
         if (possibleBudgetValue && possibleBudgetValue > 0) {
           console.log('Setting initial WITH_TOOL cost from alternative source:', possibleBudgetValue);
-          setValue('estimated_cost_with_tool', Number(possibleBudgetValue), { shouldValidate: true });
+          setValue('estimated_cost_with_tool', Number(possibleBudgetValue), { shouldValidate: true, shouldDirty: true });
         }
       }
       
-      if (budgetCalculationType === 'WITHOUT_TOOL' && withoutToolCost === 0 && initialData?.estimated_cost_without_tool) {
+      if (budgetCalculationType === 'WITHOUT_TOOL' && initialData?.estimated_cost_without_tool) {
         console.log('Setting initial WITHOUT_TOOL cost (initialData.estimated_cost_without_tool):', initialData.estimated_cost_without_tool);
-        setValue('estimated_cost_without_tool', Number(initialData.estimated_cost_without_tool), { shouldValidate: true });
+        setValue('estimated_cost_without_tool', Number(initialData.estimated_cost_without_tool), { shouldValidate: true, shouldDirty: true });
       }
       
       setInitialRender(false);

@@ -78,17 +78,6 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
   };
 
   // Handle budget deletion
-  const handleDeleteBudget = async (activityId: string) => {
-    if (onDeleteBudget) {
-      try {
-        await onDeleteBudget(activityId);
-        // Refresh the activities list to show updated state
-        queryClient.invalidateQueries({ queryKey: ['main-activities', initiativeId, planKey] });
-      } catch (error) {
-        console.error('Error deleting budget:', error);
-      }
-    }
-  };
 
   // Handle activity validation
   const handleValidateActivities = () => {
@@ -339,7 +328,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                         onClick={(e) => {
                           e.stopPropagation();
                           if (window.confirm('Are you sure you want to delete this budget? This action cannot be undone.')) {
-                            handleDeleteBudget(activity.id);
+                            onDeleteBudget(activity.id);
                           }
                         }}
                         className="text-xs text-red-600 hover:text-red-800 flex items-center"

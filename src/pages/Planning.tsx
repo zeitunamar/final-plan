@@ -560,6 +560,7 @@ const Planning: React.FC = () => {
   const handleDeleteBudget = async (activityId: string) => {
     try {
       console.log('Deleting budget for activity:', activityId);
+      console.log('Deleting budget for activity:', activityId);
       
       // Call the API to delete the budget
       const response = await api.delete(`/activity-budgets/?activity=${activityId}`);
@@ -569,11 +570,18 @@ const Planning: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['main-activities'] });
       
       // Show success message
+      console.log('Budget delete response:', response);
       setSuccessMessage('Budget deleted successfully');
       setTimeout(() => setSuccessMessage(null), 3000);
       
+      queryClient.invalidateQueries({ queryKey: ['activity-budgets'] });
+      
+      // Show success message
+      setSuccessMessage('Budget deleted successfully');
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (error) {
       console.error('Error deleting budget:', error);
+      setError('Failed to delete budget. Please try again.');
       setError('Failed to delete budget. Please try again.');
       setTimeout(() => setError(null), 5000);
     }
