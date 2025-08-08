@@ -1515,6 +1515,8 @@ export const plans = {
         const savedObjectiveIds = response.data.selected_objectives;
         console.log('Saved objective IDs:', savedObjectiveIds);
         
+        const selectedObjectiveIds = formattedData.selected_objectives;
+        
         if (savedObjectiveIds.length !== selectedObjectiveIds.length) {
           console.error('OBJECTIVE COUNT MISMATCH:', {
             submitted: selectedObjectiveIds.length,
@@ -1535,35 +1537,6 @@ export const plans = {
         console.log('✓ All objectives verified successfully saved');
       }
       
-      return response.data;
-            }
-            // If it's already a primitive value, convert to number
-            return Number(item);
-          });
-        } else {
-          // If it's not an array, make it an empty array
-          formattedData.selected_objectives = [];
-        }
-      }
-      
-      if (formattedData.selected_objectives_weights) {
-        // Ensure weights are properly formatted
-        const weights: Record<string, number> = {};
-        Object.entries(formattedData.selected_objectives_weights).forEach(([key, value]) => {
-          weights[key] = Number(value);
-        });
-        formattedData.selected_objectives_weights = weights;
-      }
-      
-      console.log('Formatted plan data for API:', {
-        ...formattedData,
-        selected_objectives: formattedData.selected_objectives,
-        selected_objectives_type: typeof formattedData.selected_objectives,
-        selected_objectives_length: formattedData.selected_objectives?.length
-      });
-      
-      await ensureCsrfToken();
-      const response = await api.post(`/plans/`, formattedData);
       return response.data;
     } catch (error) {
       console.error('=== PLAN CREATION FAILED ===');
