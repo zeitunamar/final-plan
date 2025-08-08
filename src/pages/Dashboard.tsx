@@ -10,6 +10,138 @@ import MetadataForm from '../components/MetadataForm';
 import type { Organization } from '../types/organization';
 import { useNavigate } from 'react-router-dom';
 import { AuthState } from '../types/user';
+import { useQuery } from '@tanstack/react-query';
+import { plans } from '../lib/api';
+
+// Component to display submitted plans
+const SubmittedPlansTable: React.FC<{ userOrgId: number }> = ({ userOrgId }) => {
+  const { data: submittedPlans, isLoading, error } = useQuery({
+    queryKey: ['plans', 'submitted', userOrgId],
+    queryFn: async () => {
+      try {
+        const response = await plans.getAll();
+        const allPlans = response?.data || [];
+        
+        // Filter plans for the user's organization
+        const userPlans = allPlans.filter(plan => 
+          plan.organization === userOrgId && 
+          ['SUBMITTED', 'APPROVED', 'REJECTED'].includes(plan.status)
+        );
+        
+        return userPlans;
+      } catch (error) {
+        console.error('Error fetching submitted plans:', error);
+        throw error;
+      }
+    },
+    enabled: !!userOrgId,
+    retry: 2
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader className="h-6 w-6 animate-spin mr-2" />
+        <span>Loading your submitted plans...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center p-8 text-red-500 bg-red-50 rounded-lg border border-red-200">
+        <AlertCircle className="h-12 w-12 mx-auto text-red-400 mb-4" />
+        <p className="text-lg mb-2">Error loading plans</p>
+        <p className="text-sm">Failed to load your submitted plans. Please try again.</p>
+      </div>
+    );
+  }
+
+  if (!submittedPlans || submittedPlans.length === 0) {
+    return (
+      <div className="text-center p-8 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+        <Info className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+        <p className="text-lg mb-2">No submitted plans found</p>
+        <p className="text-sm">You haven't submitted any plans yet.</p>
+      </div>
+    );
+  }
+
+  const formatDate = (dateString: string) => {
+    try {
+      return new Date(dateString).toLocaleDateString();
+    } catch (e) {
+      return 'Invalid date';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'SUBMITTED':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'APPROVED':
+        return 'bg-green-100 text-green-800';
+      case 'REJECTED':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Plan Type
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Planning Period
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Status
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Submitted Date
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {submittedPlans.map((plan) => (
+            <tr key={plan.id} className="hover:bg-gray-50">
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                {plan.type}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {formatDate(plan.from_date)} - {formatDate(plan.to_date)}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(plan.status)}`}>
+                  {plan.status}
+                </span>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {plan.submitted_at ? formatDate(plan.submitted_at) : 'Not submitted'}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                <a
+                  href={`/plans/${plan.id}`}
+                  className="text-blue-600 hover:text-blue-900"
+                >
+                  View Details
+                </a>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
 
 function Dashboard() {
   const { t } = useLanguage();
@@ -245,11 +377,7 @@ function Dashboard() {
         <div className="bg-white rounded-lg shadow">
           <div className="p-6">
             <h2 className="text-lg font-semibold mb-4">My Submitted Plans</h2>
-            <div className="text-center p-8 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-              <Info className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <p className="text-lg mb-2">Plan status tracking will be available here</p>
-              <p className="text-sm">You can view the status of your submitted plans in this section</p>
-            </div>
+            <SubmittedPlansTable userOrgId={userOrganizations[0]} />
           </div>
         </div>
       )}
