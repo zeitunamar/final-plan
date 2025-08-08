@@ -556,6 +556,29 @@ const Planning: React.FC = () => {
     setShowBudgetDetails(true);
   };
 
+  // Handle budget deletion
+  const handleDeleteBudget = async (activityId: string) => {
+    try {
+      console.log('Deleting budget for activity:', activityId);
+      
+      // Call the API to delete the budget
+      const response = await api.delete(`/activity-budgets/?activity=${activityId}`);
+      console.log('Budget deletion response:', response);
+      
+      // Refresh the activities data to reflect the change
+      queryClient.invalidateQueries({ queryKey: ['main-activities'] });
+      
+      // Show success message
+      setSuccessMessage('Budget deleted successfully');
+      setTimeout(() => setSuccessMessage(null), 3000);
+      
+    } catch (error) {
+      console.error('Error deleting budget:', error);
+      setError('Failed to delete budget. Please try again.');
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
   const handleSelectBudgetCalculationType = (type: BudgetCalculationType, activityType?: ActivityType) => {
     setBudgetCalculationType(type);
     setSelectedActivityType(activityType || null);
@@ -1102,7 +1125,6 @@ const Planning: React.FC = () => {
                     onSelectInitiative={handleSelectInitiative}
                     isNewPlan={true}
                     planKey={refreshKey.toString()}
-                    onDeleteBudget={handleDeleteBudget}
                     isUserPlanner={isUserPlanner}
                     userOrgId={userOrgId}
                   />

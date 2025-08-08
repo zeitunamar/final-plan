@@ -96,10 +96,10 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
     if (initialRender) {
       if (budgetCalculationType === 'WITH_TOOL' && withToolCost === 0 && initialData?.estimated_cost_with_tool) {
         console.log('Setting initial WITH_TOOL cost (initialData.estimated_cost_with_tool):', initialData.estimated_cost_with_tool);
-        setValue('estimated_cost_with_tool', Number(initialData.estimated_cost_with_tool));
+        setValue('estimated_cost_with_tool', Number(initialData.estimated_cost_with_tool), { shouldValidate: true });
       } else if (budgetCalculationType === 'WITH_TOOL' && withToolCost === 0 && initialData?.totalBudget) {
         console.log('Setting initial WITH_TOOL cost from totalBudget:', initialData.totalBudget);
-        setValue('estimated_cost_with_tool', Number(initialData.totalBudget));
+        setValue('estimated_cost_with_tool', Number(initialData.totalBudget), { shouldValidate: true });
       } else if (budgetCalculationType === 'WITH_TOOL' && withToolCost === 0) {
         // Last resort: check if there's any budget value we can use
         const possibleBudgetValue = initialData?.estimated_cost || 
@@ -111,13 +111,13 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
         
         if (possibleBudgetValue && possibleBudgetValue > 0) {
           console.log('Setting initial WITH_TOOL cost from alternative source:', possibleBudgetValue);
-          setValue('estimated_cost_with_tool', Number(possibleBudgetValue));
+          setValue('estimated_cost_with_tool', Number(possibleBudgetValue), { shouldValidate: true });
         }
       }
       
       if (budgetCalculationType === 'WITHOUT_TOOL' && withoutToolCost === 0 && initialData?.estimated_cost_without_tool) {
         console.log('Setting initial WITHOUT_TOOL cost (initialData.estimated_cost_without_tool):', initialData.estimated_cost_without_tool);
-        setValue('estimated_cost_without_tool', Number(initialData.estimated_cost_without_tool));
+        setValue('estimated_cost_without_tool', Number(initialData.estimated_cost_without_tool), { shouldValidate: true });
       }
       
       setInitialRender(false);
