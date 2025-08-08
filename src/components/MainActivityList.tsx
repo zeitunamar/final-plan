@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mainActivities } from '../lib/api';
-import { BarChart3, AlertCircle, CheckCircle, Edit, Trash2, Lock, PlusCircle, Building2, Info } from 'lucide-react';
+import { BarChart3, AlertCircle, CheckCircle, Edit, Trash2, Lock, PlusCircle, Building2, Info, DollarSign, Eye } from 'lucide-react';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 import type { MainActivity } from '../types/organization';
 import { auth } from '../lib/api';
@@ -12,6 +12,9 @@ interface MainActivityListProps {
   initiativeWeight: number;
   onEditActivity: (activity: MainActivity) => void;
   onSelectActivity?: (activity: MainActivity) => void;
+  onAddBudget?: (activity: MainActivity) => void;
+  onViewBudget?: (activity: MainActivity) => void;
+  onEditBudget?: (activity: MainActivity) => void;
   isNewPlan?: boolean;
   planKey?: string;
   isUserPlanner: boolean;
@@ -23,6 +26,9 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
   initiativeWeight,
   onEditActivity,
   onSelectActivity,
+  onAddBudget,
+  onViewBudget,
+  onEditBudget,
   isNewPlan = false,
   planKey = 'default',
   isUserPlanner,
@@ -298,6 +304,30 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
               <div>Q4: {activity.q4_target || 0}</div>
             </div>
             
+            {/* Budget Summary */}
+            {activity.budget && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-md border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <DollarSign className="h-4 w-4 text-green-600 mr-1" />
+                    <span className="text-sm font-medium text-gray-700">Budget</span>
+                  </div>
+                  <div className="text-sm font-medium text-green-600">
+                    ${(activity.budget.budget_calculation_type === 'WITH_TOOL' 
+                      ? activity.budget.estimated_cost_with_tool 
+                      : activity.budget.estimated_cost_without_tool
+                    ).toLocaleString()}
+                  </div>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-500">
+                  <div>Government: ${activity.budget.government_treasury.toLocaleString()}</div>
+                  <div>Partners: ${activity.budget.partners_funding.toLocaleString()}</div>
+                  <div>SDG: ${activity.budget.sdg_funding.toLocaleString()}</div>
+                  <div>Other: ${activity.budget.other_funding.toLocaleString()}</div>
+                </div>
+              </div>
+            )}
+            
             <div className="flex justify-end mt-2">
               {isUserPlanner ? (
                 <div className="flex space-x-2">
@@ -311,6 +341,44 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                     <Edit className="h-4 w-4 mr-1" />
                     Edit
                   </button>
+                  
+                  {/* Budget Actions */}
+                  {activity.budget ? (
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onViewBudget) onViewBudget(activity);
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        View Budget
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onEditBudget) onEditBudget(activity);
+                        }}
+                        className="text-xs text-purple-600 hover:text-purple-800 flex items-center"
+                      >
+                        <Edit className="h-4 w-4 mr-1" />
+                        Edit Budget
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onAddBudget) onAddBudget(activity);
+                      }}
+                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
+                    >
+                      <DollarSign className="h-4 w-4 mr-1" />
+                      Add Budget
+                    </button>
+                  )}
+                  
                   <button
                     onClick={(e) => handleDeleteActivity(activity.id, e)}
                     disabled={deleteActivityMutation.isPending}
