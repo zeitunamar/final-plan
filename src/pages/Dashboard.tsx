@@ -15,12 +15,14 @@ import { plans } from '../lib/api';
 
 // Component to display submitted plans
 const SubmittedPlansTable: React.FC<{ userOrgId: number }> = ({ userOrgId }) => {
-  const { data: submittedPlans, isLoading, error } = useQuery({
+  const { data: submittedPlans, isLoading, error, refetch } = useQuery({
     queryKey: ['plans', 'submitted', userOrgId],
     queryFn: async () => {
       try {
+        console.log('Fetching submitted plans for organization:', userOrgId);
         const response = await plans.getAll();
         const allPlans = response?.data || [];
+        console.log('All plans fetched:', allPlans.length);
         
         // Filter plans for the user's organization
         const userPlans = allPlans.filter(plan => 
@@ -28,6 +30,7 @@ const SubmittedPlansTable: React.FC<{ userOrgId: number }> = ({ userOrgId }) => 
           ['SUBMITTED', 'APPROVED', 'REJECTED'].includes(plan.status)
         );
         
+        console.log('Filtered user plans:', userPlans.length);
         return userPlans;
       } catch (error) {
         console.error('Error fetching submitted plans:', error);
@@ -37,6 +40,14 @@ const SubmittedPlansTable: React.FC<{ userOrgId: number }> = ({ userOrgId }) => 
     enabled: !!userOrgId,
     retry: 2
   });
+
+  // Auto-refresh when component mounts or userOrgId changes
+  React.useEffect(() => {
+    if (userOrgId) {
+      console.log('Auto-refreshing submitted plans for org:', userOrgId);
+      refetch();
+    }
+  }, [userOrgId, refetch]);
 
   if (isLoading) {
     return (
