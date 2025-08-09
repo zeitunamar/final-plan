@@ -558,13 +558,6 @@ const Planning: React.FC = () => {
 
   // Handle budget deletion
   const handleDeleteBudget = async (activityId: string) => {
-    if (!activityId) {
-      console.error('No activity ID provided for budget deletion');
-      return;
-    }
-    
-    setDeletingBudgetId(activityId);
-    
     try {
       console.log('Deleting budget for activity:', activityId);
       console.log('Deleting budget for activity:', activityId);
@@ -609,26 +602,9 @@ const Planning: React.FC = () => {
       // Show success message
       console.log('Budget delete response:', response);
       setSuccessMessage('Budget deleted successfully');
-      console.log('Deleting budget for activity:', activityId);
-      
-      // Find the activity and its budget
-      const activity = await mainActivities.getById(activityId);
-      if (!activity?.data?.budget?.id) {
-        throw new Error('Budget not found for this activity');
-      }
-      
-      const budgetId = activity.data.budget.id;
-      console.log('Found budget ID to delete:', budgetId);
-      
-      // Delete the budget using the budget ID
-      await activityBudgets.delete(budgetId);
-      console.log('Budget deleted successfully');
-      
-      // Refresh the data
+      setTimeout(() => setSuccessMessage(null), 3000);
       
       queryClient.invalidateQueries({ queryKey: ['activity-budgets'] });
-      queryClient.invalidateQueries({ queryKey: ['main-activities', selectedInitiative?.id] });
-      
       
       // Show success message
       setSuccessMessage('Budget deleted successfully');
@@ -638,8 +614,6 @@ const Planning: React.FC = () => {
       setError('Failed to delete budget. Please try again.');
       setError('Failed to delete budget. Please try again.');
       setTimeout(() => setError(null), 5000);
-    } finally {
-      setDeletingBudgetId(null);
     }
   };
 
@@ -1250,6 +1224,8 @@ const Planning: React.FC = () => {
                       onAddBudget={handleAddBudget}
                       onViewBudget={handleViewBudget}
                       onEditBudget={handleEditBudget}
+                      onDeleteBudget={(activityId) => handleDeleteBudget(activityId)}
+                      deletingBudgetId={deletingBudgetId}
                       isNewPlan={true}
                       planKey={refreshKey.toString()}
                       isUserPlanner={isUserPlanner}
