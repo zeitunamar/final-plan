@@ -1285,10 +1285,15 @@ export const mainActivities = {
 
 // Activity budgets service
 export const activityBudgets = {
-  async getByActivity(activityId: string) {
+   async getByActivity(activityId: string) {
     try {
       const response = await api.get(`/activity-budgets/?activity=${activityId}`);
       return response;
+    } catch (error) {
+      console.error(`Failed to get budget for activity ${activityId}:`, error);
+      throw error;
+    }
+  },
   delete: (id: string) => {
     console.log('API: Deleting budget with ID:', id);
     return api.delete(`/activity-budgets/${id}/`);
