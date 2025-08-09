@@ -1298,10 +1298,7 @@ export const activityBudgets = {
     console.log('API: Deleting budget with ID:', id);
     return api.delete(`/activity-budgets/${id}/`);
   },
-      console.error(`Failed to get budget for activity ${activityId}:`, error);
-      throw error;
-    }
-  },
+  
   
   async create(data: any) {
     try {
