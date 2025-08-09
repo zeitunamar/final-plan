@@ -1224,8 +1224,6 @@ const Planning: React.FC = () => {
                       onAddBudget={handleAddBudget}
                       onViewBudget={handleViewBudget}
                       onEditBudget={handleEditBudget}
-                      onDeleteBudget={(activityId) => handleDeleteBudget(activityId)}
-                      deletingBudgetId={deletingBudgetId}
                       isNewPlan={true}
                       planKey={refreshKey.toString()}
                       isUserPlanner={isUserPlanner}

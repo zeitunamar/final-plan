@@ -156,16 +156,16 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
 
   // Calculate totals
   // Make sure we have valid numeric values
-  const totalFunding = Number(governmentTreasury || 0) + Number(sdgFunding || 0) + 
-                        Number(calculatedPartnersFunding || 0) + Number(otherFunding || 0);
+  const totalFunding = (governmentTreasury || 0) + (sdgFunding || 0) + 
+                        (calculatedPartnersFunding || 0) + (otherFunding || 0);
   
   // Calculate estimated cost based on budget type, ensuring we get a positive number
   const estimatedCost = budgetCalculationType === 'WITH_TOOL' 
-    ? Math.max(Number(withToolCost || 0), 
+    ? Math.max(withToolCost || 0, 
               initialData?.estimated_cost_with_tool || 0, 
               initialData?.totalBudget || 0,
               initialData?.estimated_cost || 0)
-    : Number(withoutToolCost || 0);
+    : Math.max(withoutToolCost || 0, initialData?.estimated_cost_without_tool || 0);
               
   const fundingGap = Math.max(0, estimatedCost - totalFunding);
 

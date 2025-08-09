@@ -1285,7 +1285,7 @@ export const mainActivities = {
 
 // Activity budgets service
 export const activityBudgets = {
-   async getByActivity(activityId: string) {
+  async getByActivity(activityId: string) {
     try {
       const response = await api.get(`/activity-budgets/?activity=${activityId}`);
       return response;
@@ -1294,11 +1294,6 @@ export const activityBudgets = {
       throw error;
     }
   },
-  delete: (id: string) => {
-    console.log('API: Deleting budget with ID:', id);
-    return api.delete(`/activity-budgets/${id}/`);
-  },
-  
   
   async create(data: any) {
     try {
