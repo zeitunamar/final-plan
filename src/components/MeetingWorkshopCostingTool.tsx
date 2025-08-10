@@ -5,6 +5,34 @@ import type { MeetingWorkshopCost, TrainingLocation } from '../types/costing';
 import { locations, perDiems, accommodations, participantCosts, sessionCosts, landTransports, airTransports } from '../lib/api';
 
 // Fallback data if API fails
+// Fallback data if API fails
+const FALLBACK_LOCATIONS = [
+  { id: 'fallback-1', name: 'Addis Ababa', region: 'Addis Ababa', is_hardship_area: false },
+  { id: 'fallback-2', name: 'Adama', region: 'Oromia', is_hardship_area: false },
+  { id: 'fallback-3', name: 'Bahirdar', region: 'Amhara', is_hardship_area: false },
+  { id: 'fallback-4', name: 'Mekele', region: 'Tigray', is_hardship_area: false }
+];
+
+const FALLBACK_PER_DIEMS = [
+  { id: 'fallback-1', location: 'fallback-1', amount: 1200, hardship_allowance_amount: 0 },
+  { id: 'fallback-2', location: 'fallback-2', amount: 1000, hardship_allowance_amount: 0 }
+];
+
+const FALLBACK_ACCOMMODATIONS = [
+  { id: 'fallback-1', location: 'fallback-1', service_type: 'BED', price: 1500 },
+  { id: 'fallback-2', location: 'fallback-1', service_type: 'LUNCH', price: 300 }
+];
+
+const FALLBACK_PARTICIPANT_COSTS = [
+  { id: 'fallback-1', cost_type: 'FLASH_DISK', price: 500 },
+  { id: 'fallback-2', cost_type: 'STATIONARY', price: 200 }
+];
+
+const FALLBACK_SESSION_COSTS = [
+  { id: 'fallback-1', cost_type: 'FLIP_CHART', price: 300 },
+  { id: 'fallback-2', cost_type: 'MARKER', price: 150 }
+];
+
 const FALLBACK_LOCATIONS = [
   { id: 'fallback-1', name: 'Addis Ababa', region: 'Addis Ababa', is_hardship_area: false },
   { id: 'fallback-2', name: 'Adama', region: 'Oromia', is_hardship_area: false }
@@ -92,6 +120,7 @@ const MeetingWorkshopCostingTool: React.FC<MeetingWorkshopCostingToolProps> = ({
   const [costMode, setCostMode] = useState<'perdiem' | 'accommodation'>('perdiem');
   const [selectedAccommodationTypes, setSelectedAccommodationTypes] = useState<string[]>([]);
   const [additionalLocations, setAdditionalLocations] = useState<MeetingLocation[]>([]);
+  const [apiErrors, setApiErrors] = useState<string[]>([]);
   const [apiBaseUrl, setApiBaseUrl] = useState<string>('');
   
   const { register, watch, control, setValue, handleSubmit, formState: { errors }, trigger, getValues } = useForm<MeetingWorkshopCost>({
@@ -141,6 +170,7 @@ const MeetingWorkshopCostingTool: React.FC<MeetingWorkshopCostingToolProps> = ({
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
+      setApiErrors([]);
       
       try {
         const [
@@ -156,50 +186,80 @@ const MeetingWorkshopCostingTool: React.FC<MeetingWorkshopCostingToolProps> = ({
             console.error('Error fetching locations:', e);
             return { data: FALLBACK_LOCATIONS };
           }),
-          perDiems.getAll().catch(e => {
-            console.error('Error fetching perDiems:', e);
-            return { data: [] };
-          }),
-          accommodations.getAll().catch(e => {
-            console.error('Error fetching accommodations:', e);
-            return { data: [] };
-          }),
-          participantCosts.getAll().catch(e => {
-            console.error('Error fetching participantCosts:', e);
-            return { data: [] };
-          }),
-          sessionCosts.getAll().catch(e => {
-            console.error('Error fetching sessionCosts:', e);
-            return { data: [] };
-          }),
-          landTransports.getAll().catch(e => {
-            console.error('Error fetching landTransports:', e);
-            return { data: [] };
-          }),
-          airTransports.getAll().catch(e => {
-            console.error('Error fetching airTransports:', e);
-            return { data: [] };
-          })
-        ]);
+        // Fetch data with individual error handling
+        const errors = [];
         
-        // Process and set the data
-        setLocationsData(locationsResult?.data || FALLBACK_LOCATIONS);
-        setPerDiemsData(perDiemsResult?.data || []);
-        setAccommodationsData(accommodationsResult?.data || []);
-        setParticipantCostsData(participantCostsResult?.data || []);
-        setSessionCostsData(sessionCostsResult?.data || []);
-        setLandTransportsData(landTransportsResult?.data || []);
-        setAirTransportsData(airTransportsResult?.data || []);
-        
-        console.log('Data fetched successfully:', {
-          locations: locationsResult?.data?.length || 0,
+        // Fetch locations with fallback
+        let locationsData = [];
+        try {
+          const locationsResult = await locations.getAll();
+          if (locationsResult?.data && Array.isArray(locationsResult.data)) {
+            locationsData = locationsResult.data;
           perDiems: perDiemsResult?.data?.length || 0,
-          accommodations: accommodationsResult?.data?.length || 0,
-          participantCosts: participantCostsResult?.data?.length || 0,
-          sessionCosts: sessionCostsResult?.data?.length || 0,
-          landTransports: landTransportsResult?.data?.length || 0,
-          airTransports: airTransportsResult?.data?.length || 0
-        });
+        
+        // Fetch per diems with fallback
+        try {
+          const perDiemsResult = await perDiems.getAll();
+          setPerDiemsData(perDiemsResult?.data || FALLBACK_PER_DIEMS);
+        } catch (pdError) {
+          console.warn('Failed to fetch per diems, using fallback:', pdError);
+          setPerDiemsData(FALLBACK_PER_DIEMS);
+          errors.push('Per diems data loaded from fallback');
+        }
+        
+        // Fetch accommodations with fallback
+        try {
+          const accommodationsResult = await accommodations.getAll();
+          setAccommodationsData(accommodationsResult?.data || FALLBACK_ACCOMMODATIONS);
+        } catch (accError) {
+          console.warn('Failed to fetch accommodations, using fallback:', accError);
+          setAccommodationsData(FALLBACK_ACCOMMODATIONS);
+          errors.push('Accommodations data loaded from fallback');
+        }
+        
+        // Fetch participant costs with fallback
+        try {
+          const participantCostsResult = await participantCosts.getAll();
+          setParticipantCostsData(participantCostsResult?.data || FALLBACK_PARTICIPANT_COSTS);
+        } catch (pcError) {
+          console.warn('Failed to fetch participant costs, using fallback:', pcError);
+          setParticipantCostsData(FALLBACK_PARTICIPANT_COSTS);
+          errors.push('Participant costs data loaded from fallback');
+        }
+        
+        // Fetch session costs with fallback
+        try {
+          const sessionCostsResult = await sessionCosts.getAll();
+          setSessionCostsData(sessionCostsResult?.data || FALLBACK_SESSION_COSTS);
+        } catch (scError) {
+          console.warn('Failed to fetch session costs, using fallback:', scError);
+          setSessionCostsData(FALLBACK_SESSION_COSTS);
+          errors.push('Session costs data loaded from fallback');
+        }
+        
+        // Fetch transport data with fallback
+        try {
+          const landTransportsResult = await landTransports.getAll();
+          setLandTransportsData(landTransportsResult?.data || []);
+        } catch (ltError) {
+          console.warn('Failed to fetch land transports:', ltError);
+          setLandTransportsData([]);
+          errors.push('Land transport data not available');
+        }
+        
+        try {
+          const airTransportsResult = await airTransports.getAll();
+          setAirTransportsData(airTransportsResult?.data || []);
+        } catch (atError) {
+          console.warn('Failed to fetch air transports:', atError);
+          setAirTransportsData([]);
+          errors.push('Air transport data not available');
+        }
+        
+        // Set API errors if any
+        if (errors.length > 0) {
+          setApiErrors(errors);
+        }
         
         // Set default location if available
         if (locationsResult?.data?.length > 0 && !initialData?.trainingLocation) {
@@ -207,8 +267,18 @@ const MeetingWorkshopCostingTool: React.FC<MeetingWorkshopCostingToolProps> = ({
         }
         
       } catch (error) {
-        console.error('Error fetching meeting/workshop costing data:', error);
-        setError('Failed to load costing data from database. Using default values.');
+        console.error('Critical error fetching meeting/workshop costing data:', error);
+        
+        // Use all fallback data
+        setLocationsData(FALLBACK_LOCATIONS);
+        setPerDiemsData(FALLBACK_PER_DIEMS);
+        setAccommodationsData(FALLBACK_ACCOMMODATIONS);
+        setParticipantCostsData(FALLBACK_PARTICIPANT_COSTS);
+        setSessionCostsData(FALLBACK_SESSION_COSTS);
+        setLandTransportsData([]);
+        setAirTransportsData([]);
+        
+        setError('Using fallback data due to server connection issues. Calculations may not be accurate.');
         // Use fallback data
         setLocationsData(FALLBACK_LOCATIONS);
       } finally {
@@ -637,25 +707,13 @@ const MeetingWorkshopCostingTool: React.FC<MeetingWorkshopCostingToolProps> = ({
 
   // Show loading state while fetching data
   if (isLoading) {
-    return <div className="flex flex-col items-center justify-center p-8">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mb-4"></div>
-      <p className="text-gray-700">Loading costing data from database...</p>
-    </div>;
-  }
-
-  // If no locations data is available, show an error
-  if (!locationsData || locationsData.length === 0) {
-    return <div className="p-6 bg-red-50 border border-red-200 rounded-lg">
-      <div className="flex items-center text-red-500 mb-2">
-        <AlertCircle className="h-6 w-6 mr-2 flex-shrink-0" />
-        <h3 className="text-lg font-medium text-red-800">Location data not available</h3>
+    return (
+      <div className="flex flex-col items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mb-4"></div>
+        <p className="text-gray-700">Loading meeting/workshop costing data...</p>
+        <p className="text-sm text-gray-500 mt-2">Fetching locations, costs, and transport data...</p>
       </div>
-      <p className="text-red-600 mb-4">Could not load location data from the database.</p>
-      <button onClick={onCancel} className="px-4 py-2 bg-white border border-red-300 rounded-md text-red-700 hover:bg-red-50">
-        Go Back
-      </button>
-    </div>;
-  }
+  // Always continue with available data (fallback if necessary)
 
   const handleFormSubmit = async (data: MeetingWorkshopCost) => {
     try {
@@ -824,6 +882,22 @@ const MeetingWorkshopCostingTool: React.FC<MeetingWorkshopCostingToolProps> = ({
           </svg>
         </button>
       </div>
+
+      {apiErrors.length > 0 && (
+        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-yellow-800">Some data loaded from fallback:</p>
+              <ul className="mt-1 text-sm text-yellow-700 list-disc list-inside">
+                {apiErrors.map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-center gap-2">
