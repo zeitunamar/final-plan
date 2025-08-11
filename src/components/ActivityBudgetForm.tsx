@@ -377,14 +377,15 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
                 {...register('estimated_cost_without_tool', {
                   required: 'This field is required',
                   min: { value: 0, message: 'Value must be positive' },
-                  setValueAs: (value) => {
-                    const numValue = parseFloat(value);
-                    console.log('Manual cost input - raw value:', value, 'parsed:', numValue);
-                    return isNaN(numValue) ? 0 : numValue;
-                  }
+                  valueAsNumber: true
                 })}
                 className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-7 pr-12 sm:text-sm border-gray-300 rounded-md"
                 placeholder="0.00"
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value) || 0;
+                  console.log('Manual cost input changed to:', value);
+                  setValue('estimated_cost_without_tool', value, { shouldValidate: true, shouldDirty: true });
+                }}
               />
             </div>
             {errors.estimated_cost_without_tool && (
