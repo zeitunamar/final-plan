@@ -133,24 +133,9 @@ const Planning: React.FC = () => {
   });
 
   // Get user organization info
-  const userOrganization = React.useMemo(() => {
-    if (!organizationsData?.data || !authData?.userOrganizations) {
-      return null;
-    }
-    
-    // Find the organization that matches the user's first organization
-    const userOrgId = authData.userOrganizations[0]?.organization;
-    if (!userOrgId) {
-      return null;
-    }
-    
-    const org = organizationsData.data.find((org: any) => org.id === userOrgId);
-    console.log('User organization found:', org);
-    console.log('User org ID:', userOrgId);
-    console.log('Available organizations:', organizationsData.data.map((o: any) => ({ id: o.id, name: o.name })));
-    
-    return org;
-  }, [organizationsData?.data, authData?.userOrganizations]);
+  const userOrganization = organizationsData?.data?.find(
+    (org: any) => authData?.userOrganizations?.some((userOrg: any) => userOrg.organization === org.id)
+  );
 
   const plannerName = authData?.user?.first_name && authData?.user?.last_name 
     ? `${authData.user.first_name} ${authData.user.last_name}`
@@ -543,19 +528,8 @@ const Planning: React.FC = () => {
         <Building2 className="h-12 w-12 text-gray-400 mb-4" />
         <h3 className="text-lg font-medium text-gray-800 mb-2">No Organization Access</h3>
         <p className="text-gray-600 mb-4">
-          {!authData?.userOrganizations?.length 
-            ? "You don't have any organization assignments. Please contact your administrator."
-            : `Looking for organization ID: ${authData.userOrganizations[0]?.organization}. Available organizations: ${organizationsData?.data?.length || 0}`
-          }
+          You don't have access to any organization for planning.
         </p>
-        <div className="text-sm text-gray-500 mb-4">
-          <p>Debug Info:</p>
-          <p>User Organizations: {authData?.userOrganizations?.length || 0}</p>
-          <p>Available Organizations: {organizationsData?.data?.length || 0}</p>
-          {authData?.userOrganizations?.[0] && (
-            <p>Looking for Org ID: {authData.userOrganizations[0].organization}</p>
-          )}
-        </div>
         <button
           onClick={() => navigate('/dashboard')}
           className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
