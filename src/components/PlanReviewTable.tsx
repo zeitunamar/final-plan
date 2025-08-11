@@ -850,7 +850,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
     try {
       processedObjectives.forEach((objective: any) => {
-        objective.initiatives?.forEach((initiative: any) => {
+        objective?.initiatives?.forEach((initiative: any) => {
           initiative?.main_activities?.forEach((activity: any) => {
             if (!activity?.budget) return;
             
@@ -882,7 +882,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     return (
       <div className="flex items-center justify-center p-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-        <span className="ml-3 text-gray-600">{loadingProgress || 'Loading plan data...'}</span>
+        <span className="ml-3 text-gray-600">Loading organization data...</span>
       </div>
     );
   }
