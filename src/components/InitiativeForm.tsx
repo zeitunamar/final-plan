@@ -295,10 +295,16 @@ const InitiativeForm: React.FC<InitiativeFormProps> = ({
         ...data,
         weight: Number(data.weight),
         [parentType === 'objective' ? 'strategic_objective' : 'program']: parentId
+        // CRITICAL FIX: Always create as custom initiative when created by planner
+        is_default: false,
+        organization: userOrgId, // Assign to user's organization
+        // Include initiative_feed if selected from predefined list
+        initiative_feed: useInitiativeFeed && selectedInitiativeFeed ? selectedInitiativeFeed : null
       };
 
       console.log('InitiativeForm: Submitting initiative with data:', submissionData);
       console.log('InitiativeForm: Weight validation passed with custom parent weight:', effectiveParentWeight);
+      console.log('InitiativeForm: Creating CUSTOM initiative for organization:', userOrgId);
       await onSubmit(submissionData);
     } catch (error: any) {
       console.error('Error submitting initiative:', error);
