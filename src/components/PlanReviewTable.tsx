@@ -1099,7 +1099,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                     const performanceMeasures = initiative.performance_measures || [];
                     const mainActivities = initiative.main_activities || [];
                     const allItems = [...performanceMeasures, ...mainActivities];
-                    
+
                     if (allItems.length === 0) {
                       // Initiative with no measures or activities
                       const isFirstRowForObjective = currentRow === 0;
