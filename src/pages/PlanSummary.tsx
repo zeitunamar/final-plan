@@ -370,7 +370,7 @@ const PlanSummary: React.FC = () => {
             exportData.push({
               No: objectiveAdded ? '' : (objIndex + 1).toString(),
               'Strategic Objective': objectiveAdded ? '' : (objective.title || 'Untitled Objective'),
-              'Strategic Objective Weight': objectiveAdded ? '' : `${calculatedWeight.toFixed(1)}%`,
+              'Strategic Objective Weight': objectiveAdded ? '' : `${objectiveWeight.toFixed(1)}%`,
               'Strategic Initiative': initiative.name || 'Untitled Initiative',
               'Initiative Weight': `${initiative.weight || 0}%`,
               'Performance Measure/Main Activity': 'No measures or activities',
@@ -428,7 +428,7 @@ const PlanSummary: React.FC = () => {
               const sixMonthTarget = item.target_type === 'cumulative' 
                 ? Number(item.q1_target || 0) + Number(item.q2_target || 0) 
                 : Number(item.q2_target || 0);
-                  'Strategic Objective Weight': objectiveAdded ? '' : `${objectiveWeight.toFixed(1)}%`,
+              
               exportData.push({
                 No: objectiveAdded ? '' : (objIndex + 1).toString(),
                 'Strategic Objective': objectiveAdded ? '' : (objective.title || 'Untitled Objective'),
