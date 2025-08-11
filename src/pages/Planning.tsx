@@ -79,18 +79,27 @@ const Planning: React.FC = () => {
   const { data: authData } = useQuery({
     queryKey: ['auth'],
     queryFn: () => auth.getCurrentUser(),
+    staleTime: 5 * 60 * 1000,
   });
 
   // Fetch organizations
   const { data: organizationsData, isLoading: isLoadingOrgs } = useQuery({
     queryKey: ['organizations'],
     queryFn: () => organizations.getAll(),
+    enabled: !!authData?.isAuthenticated,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Get user organization info
   const userOrganization = organizationsData?.data?.find(
     (org: any) => authData?.userOrganizations?.some((userOrg: any) => userOrg.organization === org.id)
   );
+
+  const plannerName = authData?.user ? 
+    `${authData.user.first_name || ''} ${authData.user.last_name || ''}`.trim() || authData.user.username :
+    'Unknown Planner';
+
+  // Set default dates
   useEffect(() => {
     if (!fromDate || !toDate) {
       const currentDate = new Date();
