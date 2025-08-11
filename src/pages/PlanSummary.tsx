@@ -112,45 +112,17 @@ const PlanSummary: React.FC = () => {
       setShowReviewForm(false);
       navigate('/evaluator');
     },
-        console.log('User organization for filtering:', userOrgId);
     onError: (error: any) => {
       setLoadingError(error.message || 'Failed to submit review');
-          // Filter objectives data to only show user's organization data
-          const filteredObjectives = objectives.map(obj => {
-            if (!obj) return obj;
-            
-            // Filter initiatives to only show user's organization data
-            const filteredInitiatives = (obj.initiatives || []).filter(initiative => 
-              initiative.is_default || 
-              !initiative.organization || 
-              initiative.organization === userOrgId
-            ).map(initiative => ({
-              ...initiative,
-              // Filter performance measures by organization
-              performance_measures: (initiative.performance_measures || []).filter(measure =>
-                !measure.organization || measure.organization === userOrgId
-              ),
-              // Filter main activities by organization
-              main_activities: (initiative.main_activities || []).filter(activity =>
-                !activity.organization || activity.organization === userOrgId
-              )
-            }));
-            
-            return {
-              ...obj,
-              initiatives: filteredInitiatives
-            };
-          });
-          
-          // Log the filtered structure
-          filteredObjectives.forEach((obj, index) => {
-            const initiativesCount = obj.initiatives?.length || 0;
-            const measuresCount = obj.initiatives?.reduce((sum, init) => sum + (init.performance_measures?.length || 0), 0) || 0;
-            const activitiesCount = obj.initiatives?.reduce((sum, init) => sum + (init.main_activities?.length || 0), 0) || 0;
-            console.log(`Filtered Table Objective ${index + 1}: ${obj.title} - ${initiativesCount} initiatives, ${measuresCount} measures, ${activitiesCount} activities (User Org: ${userOrgId})`);
-          });
+    }
+  });
+
+  // Authentication effect
+  useEffect(() => {
+    const ensureAuth = async () => {
+      try {
         const authData = await auth.getCurrentUser();
-          setProcessedObjectives(filteredObjectives);
+        if (!authData) {
           navigate('/login');
           return;
         }
@@ -330,6 +302,7 @@ const PlanSummary: React.FC = () => {
       return exportData;
     }
 
+    const userOrgId = userOrganizations?.[0] || null;
     console.log('Converting plan data for export - user org:', userOrgId);
     console.log('Objectives to convert:', objectives.length);
 
@@ -413,8 +386,6 @@ const PlanSummary: React.FC = () => {
               'AnnualTarget': '-',
               'Implementor': initiative.organization_name || 
                             (initiative.organization && organizationsMap && organizationsMap[initiative.organization]) ||
-                            (item.organization_name) ||
-                            (item.organization && organizationsMap && organizationsMap[item.organization]) ||
                             'Ministry of Health',
               'BudgetRequired': '-',
               'Government': '-',
@@ -477,6 +448,8 @@ const PlanSummary: React.FC = () => {
                 'AnnualTarget': item.annual_target || 0,
                 'Implementor': initiative.organization_name || 
                               (initiative.organization && organizationsMap && organizationsMap[initiative.organization]) ||
+                              (item.organization_name) ||
+                              (item.organization && organizationsMap && organizationsMap[item.organization]) ||
                               'Ministry of Health',
                 'BudgetRequired': budgetRequired,
                 'Government': government,
@@ -498,6 +471,7 @@ const PlanSummary: React.FC = () => {
     console.log(`Converted ${objectives.length} objectives to ${exportData.length} export rows`);
     return exportData;
   };
+  
   const formatDate = (dateString: string | undefined | null) => {
     if (!dateString) return 'N/A';
     try {
