@@ -920,14 +920,14 @@ const PlanSummary: React.FC = () => {
               }`}>
                 <div className="flex items-start">
                   {filteredPlanData.status === 'APPROVED' ? (
-                    <CheckCircle className={`h-5 w-5 mr-2 text-green-500 mt-0.5`} />
+                    <CheckCircle className={\`h-5 w-5 mr-2 text-green-500 mt-0.5`} />
                   ) : filteredPlanData.status === 'REJECTED' ? (
-                    <XCircle className={`h-5 w-5 mr-2 text-red-500 mt-0.5`} />
+                    <XCircle className={\`h-5 w-5 mr-2 text-red-500 mt-0.5`} />
                   ) : (
                     <div className="h-5 w-5 mr-2" />
                   )}
                   <div>
-                    <p className={`font-medium ${
+                    <p className={\`font-medium ${
                       filteredPlanData.status === 'APPROVED' ? 'text-green-700' : 
                       filteredPlanData.status === 'REJECTED' ? 'text-red-700' : 
                       'text-gray-700'
