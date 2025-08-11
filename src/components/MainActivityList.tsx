@@ -321,14 +321,6 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="text-sm font-medium text-green-600">
-                      ${(activity.budget.budget_calculation_type === 'WITH_TOOL' 
-                        ? activity.budget.estimated_cost_with_tool 
-                        : activity.budget.estimated_cost_without_tool
-                      ).toLocaleString()}
-                    </div>
-                  </div>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-500">
                   <div>Government: ${activity.budget.government_treasury.toLocaleString()}</div>
@@ -385,7 +377,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                       e.stopPropagation();
                       onEditActivity(activity);
                     }}
-                    className="text-xs text-green-600 hover:text-green-800 flex items-center"
+                    className="text-xs text-green-600 hover:text-green-800 flex items-center px-2 py-1 bg-green-50 rounded"
                   >
                     <Edit className="h-4 w-4 mr-1" />
                     Edit
@@ -398,24 +390,23 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                         e.stopPropagation();
                         if (onAddBudget) onAddBudget(activity);
                       }}
-                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
+                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center px-2 py-1 bg-blue-50 rounded"
                     >
-                      <DollarSign className="h-4 w-4 mr-1" />
+                      <DollarSign className="h-3 w-3 mr-1" />
                       Add Budget
                     </button>
                   )}
                   
                   <button
                     onClick={(e) => handleDeleteActivity(activity.id, e)}
-                    disabled={deleteActivityMutation.isPending}
-                    className="text-xs text-red-600 hover:text-red-800 flex items-center disabled:opacity-50"
+                    className="text-xs text-red-600 hover:text-red-800 flex items-center px-2 py-1 bg-red-50 rounded"
                   >
-                    <Trash2 className="h-4 w-4 mr-1" />
+                    <Trash2 className="h-3 w-3 mr-1" />
                     Delete
                   </button>
                 </div>
               ) : (
-                <div className="text-xs text-gray-500 flex items-center">
+                <div className="text-xs text-gray-500 flex items-center px-2 py-1 bg-gray-50 rounded">
                   <Lock className="h-3 w-3 mr-1" />
                   Read Only
                 </div>
