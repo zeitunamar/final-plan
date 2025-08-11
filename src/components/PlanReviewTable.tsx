@@ -47,7 +47,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   const [processedObjectives, setProcessedObjectives] = useState<StrategicObjective[]>([]);
   const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [dataRefreshKey, setDataRefreshKey] = useState(0);
-  const [isLoadingCompleteData, setIsLoadingCompleteData] = useState(true);</parameter>
+  const [isLoadingCompleteData, setIsLoadingCompleteData] = useState(true);
 
   // Determine the effective user organization ID
   const effectiveUserOrgId = userOrgId || planData?.organization || null;
@@ -218,7 +218,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
   // Remove the old data fetching logic and replace with new comprehensive approach
   // Create a query key that includes all initiative IDs to fetch fresh data
-  const allInitiativeIds = React.useMemo(() => {</parameter>
+  const allInitiativeIds = React.useMemo(() => {
     const ids: string[] = [];
     objectives?.forEach(objective => {
       objective.initiatives?.forEach(initiative => {
@@ -228,6 +228,8 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       });
     });
     return ids;
+  }, [objectives]);
+  
   // Fetch organizations for mapping names
   useEffect(() => {
     const fetchOrganizations = async () => {
@@ -279,11 +281,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
             const required = activity.budget.budget_calculation_type === 'WITH_TOOL' 
               ? Number(activity.budget.estimated_cost_with_tool || 0)
               : Number(activity.budget.estimated_cost_without_tool || 0);
-            
-            // Add PM/MA prefix to the name for clear identification
-            const displayName = isPerformanceMeasure 
-              ? `PM: ${item.name}` 
-              : `MA: ${item.name}`;
             
             totalRequired += required;
             totalGovernment += Number(activity.budget.government_treasury || 0);
@@ -653,14 +650,13 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
                     <div className="flex items-center">
-                      {row.itemType === 'Performance Measure' ? (
+                      {row.itemType === 'Performance Measure' && (
                         <BarChart3 className="h-4 w-4 text-purple-600 mr-2 flex-shrink-0" title="Performance Measure" />
-                      ) : row.itemType === 'Main Activity' ? (
-                        <Activity className="h-4 w-4 text-green-600 mr-2 flex-shrink-0" title="Main Activity" />
-                      ) : (
-                        <Target className="h-4 w-4 text-blue-600 mr-2 flex-shrink-0" title="Objective/Initiative" />
                       )}
-                      <div className="truncate" title={row.itemName}>{row.itemName}</div>
+                      {row.itemType === 'Main Activity' && (
+                        <Activity className="h-4 w-4 text-green-600 mr-2 flex-shrink-0" title="Main Activity" />
+                      )}
+                      <div className="truncate" title={row.displayName || row.itemName}>{row.displayName || row.itemName}</div>
                     </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
