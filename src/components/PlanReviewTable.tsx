@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, FileSpreadsheet, File as FilePdf, Send, AlertCircle, CheckCircle, DollarSign, Building2, Target, Activity, BarChart3, Info, Loader } from 'lucide-react';
 import { useLanguage } from '../lib/i18n/LanguageContext';
-import { organizations, auth, performanceMeasures, mainActivities } from '../lib/api';
+import { organizations, auth, performanceMeasures, mainActivities, objectives, initiatives } from '../lib/api';
 import type { StrategicObjective } from '../types/organization';
 import type { PlanType } from '../types/plan';
 import { exportToExcel, exportToPDF, processDataForExport } from '../lib/utils/export';
@@ -20,6 +20,7 @@ interface PlanReviewTableProps {
   userOrgId?: number | null;
   isViewOnly?: boolean;
   planData?: any;
+  refreshTrigger?: number; // Add refresh trigger prop
 }
 
 const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
@@ -34,21 +35,190 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   isPreviewMode = false,
   userOrgId = null,
   isViewOnly = false,
-  planData = null
+  planData = null,
+  refreshTrigger = 0
 }) => {
   const { t } = useLanguage();
+  const queryClient = useQueryClient();
   const [isSubmittingPlan, setIsSubmittingPlan] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
   const [processedObjectives, setProcessedObjectives] = useState<StrategicObjective[]>([]);
   const [isRefreshingData, setIsRefreshingData] = useState(false);
+  const [dataRefreshKey, setDataRefreshKey] = useState(0);
+  const [isLoadingCompleteData, setIsLoadingCompleteData] = useState(true);</parameter>
 
   // Determine the effective user organization ID
   const effectiveUserOrgId = userOrgId || planData?.organization || null;
 
+  // Force data refresh whenever refreshTrigger changes
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      console.log('PlanReviewTable: Refresh triggered, invalidating all data');
+      setDataRefreshKey(prev => prev + 1);
+      
+      // Invalidate all related queries
+      queryClient.invalidateQueries({ queryKey: ['objectives'] });
+      queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+      queryClient.invalidateQueries({ queryKey: ['performance-measures'] });
+      queryClient.invalidateQueries({ queryKey: ['main-activities'] });
+    }
+  }, [refreshTrigger, queryClient]);
+
+  // Fetch fresh objectives data with all nested data
+  const { data: freshObjectivesData, isLoading: isLoadingObjectives } = useQuery({
+    queryKey: ['objectives-complete', effectiveUserOrgId, dataRefreshKey],
+    queryFn: async () => {
+      if (!effectiveUserOrgId) return [];
+      
+      console.log('PlanReviewTable: Fetching complete fresh objectives data');
+      setIsLoadingCompleteData(true);
+      
+      try {
+        // Get fresh objectives data
+        const objectivesResponse = await objectives.getAll();
+        const allObjectives = objectivesResponse?.data || [];
+        
+        // Filter to only selected objectives if provided
+        const targetObjectives = objectives.length > 0 
+          ? allObjectives.filter(obj => objectives.some(selected => selected.id === obj.id))
+          : allObjectives;
+        
+        console.log(`Processing ${targetObjectives.length} objectives for complete data`);
+        
+        // For each objective, fetch all nested data
+        const enrichedObjectives = await Promise.all(
+          targetObjectives.map(async (objective) => {
+            try {
+              // Fetch initiatives for this objective
+              const initiativesResponse = await initiatives.getByObjective(objective.id.toString());
+              const allInitiatives = initiativesResponse?.data || [];
+              
+              // Filter initiatives by organization
+              const userInitiatives = allInitiatives.filter(initiative => {
+                const isDefault = initiative.is_default === true;
+                const belongsToUserOrg = Number(initiative.organization) === Number(effectiveUserOrgId);
+                const hasNoOrg = !initiative.organization;
+                
+                return isDefault || belongsToUserOrg || hasNoOrg;
+              });
+              
+              console.log(`Objective ${objective.title}: ${userInitiatives.length} initiatives for user org`);
+              
+              // For each initiative, fetch measures and activities
+              const enrichedInitiatives = await Promise.all(
+                userInitiatives.map(async (initiative) => {
+                  try {
+                    // Fetch fresh performance measures
+                    const measuresResponse = await performanceMeasures.getByInitiative(initiative.id);
+                    const allMeasures = measuresResponse?.data || [];
+                    const userMeasures = allMeasures.filter(measure => 
+                      !measure.organization || Number(measure.organization) === Number(effectiveUserOrgId)
+                    );
+                    
+                    // Fetch fresh main activities
+                    const activitiesResponse = await mainActivities.getByInitiative(initiative.id);
+                    const allActivities = activitiesResponse?.data || [];
+                    const userActivities = allActivities.filter(activity => 
+                      !activity.organization || Number(activity.organization) === Number(effectiveUserOrgId)
+                    );
+                    
+                    console.log(`Initiative ${initiative.name}: ${userMeasures.length} measures, ${userActivities.length} activities`);
+                    
+                    return {
+                      ...initiative,
+                      performance_measures: userMeasures,
+                      main_activities: userActivities
+                    };
+                  } catch (error) {
+                    console.error(`Error fetching data for initiative ${initiative.id}:`, error);
+                    return {
+                      ...initiative,
+                      performance_measures: [],
+                      main_activities: []
+                    };
+                  }
+                })
+              );
+              
+              // Calculate effective weight
+              const effectiveWeight = objective.planner_weight !== undefined && objective.planner_weight !== null
+                ? objective.planner_weight
+                : objective.weight;
+              
+              return {
+                ...objective,
+                effective_weight: effectiveWeight,
+                initiatives: enrichedInitiatives
+              };
+            } catch (error) {
+              console.error(`Error processing objective ${objective.id}:`, error);
+              return {
+                ...objective,
+                effective_weight: objective.weight,
+                initiatives: []
+              };
+            }
+          })
+        );
+        
+        console.log('PlanReviewTable: Successfully fetched complete fresh data');
+        return enrichedObjectives;
+      } catch (error) {
+        console.error('PlanReviewTable: Error fetching complete data:', error);
+        throw error;
+      } finally {
+        setIsLoadingCompleteData(false);
+      }
+    },
+    enabled: !!effectiveUserOrgId,
+    staleTime: 0, // Always fetch fresh data
+    refetchOnWindowFocus: true,
+    refetchInterval: 30000, // Refresh every 30 seconds
+    retry: 2
+  });
+
+  // Update processed objectives when fresh data arrives
+  useEffect(() => {
+    if (freshObjectivesData && Array.isArray(freshObjectivesData)) {
+      console.log('PlanReviewTable: Processing fresh objectives data:', freshObjectivesData.length);
+      setProcessedObjectives(freshObjectivesData);
+    }
+  }, [freshObjectivesData]);
+
+  // Manual refresh function for when data changes are detected
+  const handleManualRefresh = async () => {
+    console.log('PlanReviewTable: Manual refresh triggered');
+    setIsRefreshingData(true);
+    
+    try {
+      // Invalidate all caches and force refetch
+      await queryClient.invalidateQueries({ queryKey: ['objectives-complete'] });
+      await queryClient.invalidateQueries({ queryKey: ['initiatives'] });
+      await queryClient.invalidateQueries({ queryKey: ['performance-measures'] });
+      await queryClient.invalidateQueries({ queryKey: ['main-activities'] });
+      
+      // Increment refresh key to force new fetch
+      setDataRefreshKey(prev => prev + 1);
+    } catch (error) {
+      console.error('Manual refresh error:', error);
+    } finally {
+      setIsRefreshingData(false);
+    }
+  };
+
+  // Auto-refresh when component mounts or dependencies change
+  useEffect(() => {
+    if (effectiveUserOrgId) {
+      console.log('PlanReviewTable: Dependencies changed, triggering refresh');
+      handleManualRefresh();
+    }
+  }, [effectiveUserOrgId, objectives.length]);
+
+  // Remove the old data fetching logic and replace with new comprehensive approach
   // Create a query key that includes all initiative IDs to fetch fresh data
-  const allInitiativeIds = React.useMemo(() => {
+  const allInitiativeIds = React.useMemo(() => {</parameter>
     const ids: string[] = [];
     objectives?.forEach(objective => {
       objective.initiatives?.forEach(initiative => {
@@ -58,81 +228,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       });
     });
     return ids;
-  }, [objectives]);
-
-  // Fetch fresh performance measures for all initiatives
-  const { data: freshPerformanceMeasures, isLoading: isLoadingMeasures } = useQuery({
-    queryKey: ['performance-measures-fresh', allInitiativeIds, effectiveUserOrgId],
-    queryFn: async () => {
-      if (!allInitiativeIds.length) return {};
-      
-      console.log('Fetching fresh performance measures for initiatives:', allInitiativeIds);
-      const measuresMap: Record<string, any[]> = {};
-      
-      await Promise.all(
-        allInitiativeIds.map(async (initiativeId) => {
-          try {
-            const response = await performanceMeasures.getByInitiative(initiativeId);
-            const measures = response?.data || [];
-            
-            // Filter by organization
-            const filteredMeasures = measures.filter(measure => 
-              !measure.organization || measure.organization === effectiveUserOrgId
-            );
-            
-            measuresMap[initiativeId] = filteredMeasures;
-            console.log(`Fresh measures for initiative ${initiativeId}:`, filteredMeasures.length);
-          } catch (error) {
-            console.error(`Error fetching measures for initiative ${initiativeId}:`, error);
-            measuresMap[initiativeId] = [];
-          }
-        })
-      );
-      
-      return measuresMap;
-    },
-    enabled: !!effectiveUserOrgId && allInitiativeIds.length > 0,
-    staleTime: 0, // Always fetch fresh data
-    refetchOnWindowFocus: true,
-    refetchInterval: 30000 // Refresh every 30 seconds
-  });
-
-  // Fetch fresh main activities for all initiatives
-  const { data: freshMainActivities, isLoading: isLoadingActivities } = useQuery({
-    queryKey: ['main-activities-fresh', allInitiativeIds, effectiveUserOrgId],
-    queryFn: async () => {
-      if (!allInitiativeIds.length) return {};
-      
-      console.log('Fetching fresh main activities for initiatives:', allInitiativeIds);
-      const activitiesMap: Record<string, any[]> = {};
-      
-      await Promise.all(
-        allInitiativeIds.map(async (initiativeId) => {
-          try {
-            const response = await mainActivities.getByInitiative(initiativeId);
-            const activities = response?.data || [];
-            
-            // Filter by organization
-            const filteredActivities = activities.filter(activity => 
-              !activity.organization || activity.organization === effectiveUserOrgId
-            );
-            
-            activitiesMap[initiativeId] = filteredActivities;
-            console.log(`Fresh activities for initiative ${initiativeId}:`, filteredActivities.length);
-          } catch (error) {
-            console.error(`Error fetching activities for initiative ${initiativeId}:`, error);
-            activitiesMap[initiativeId] = [];
-          }
-        })
-      );
-      
-      return activitiesMap;
-    },
-    enabled: !!effectiveUserOrgId && allInitiativeIds.length > 0,
-    staleTime: 0, // Always fetch fresh data
-    refetchOnWindowFocus: true,
-    refetchInterval: 30000 // Refresh every 30 seconds
-  });
   // Fetch organizations for mapping names
   useEffect(() => {
     const fetchOrganizations = async () => {
@@ -157,78 +252,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     fetchOrganizations();
   }, []);
 
-  // Process objectives with fresh data when any data changes
-  useEffect(() => {
-    if (!effectiveUserOrgId || !objectives?.length) {
-      console.log('PlanReviewTable: Waiting for organization ID or objectives...', { 
-        effectiveUserOrgId, 
-        objectivesLength: objectives?.length 
-      });
-      setProcessedObjectives([]);
-      return;
-    }
-
-    setIsRefreshingData(true);
-    console.log('PlanReviewTable: Processing objectives with fresh data and organization filter:', effectiveUserOrgId);
-    
-    try {
-      const filteredObjectives = objectives.map(objective => {
-        if (!objective) return objective;
-
-        // Process initiatives for this objective with fresh data
-        const userInitiatives = (objective.initiatives || []).filter(initiative => {
-          const isDefault = initiative.is_default === true;
-          const belongsToUserOrg = Number(initiative.organization) === Number(effectiveUserOrgId);
-          const hasNoOrg = !initiative.organization;
-          const belongsToOtherOrg = initiative.organization && Number(initiative.organization) !== Number(effectiveUserOrgId);
-          
-          const shouldInclude = (isDefault || belongsToUserOrg || hasNoOrg) && !belongsToOtherOrg;
-          
-          console.log(`Initiative "${initiative.name}": org=${initiative.organization}, userOrg=${effectiveUserOrgId}, shouldInclude=${shouldInclude}`);
-          
-          return shouldInclude;
-        });
-
-        // For each initiative, use fresh measures and activities data
-        const processedInitiatives = userInitiatives.map(initiative => {
-          // Use fresh performance measures data if available, otherwise use provided data
-          const freshMeasures = freshPerformanceMeasures?.[initiative.id] || [];
-          const providedMeasures = (initiative.performance_measures || []).filter(measure => 
-            !measure.organization || Number(measure.organization) === Number(effectiveUserOrgId)
-          );
-          const filteredMeasures = freshMeasures.length > 0 ? freshMeasures : providedMeasures;
-          
-          // Use fresh main activities data if available, otherwise use provided data
-          const freshActivities = freshMainActivities?.[initiative.id] || [];
-          const providedActivities = (initiative.main_activities || []).filter(activity => 
-            !activity.organization || Number(activity.organization) === Number(effectiveUserOrgId)
-          );
-          const filteredActivities = freshActivities.length > 0 ? freshActivities : providedActivities;
-          
-          console.log(`Initiative ${initiative.name}: fresh measures=${freshMeasures.length}, provided measures=${providedMeasures.length}, fresh activities=${freshActivities.length}, provided activities=${providedActivities.length}`);
-
-          return {
-            ...initiative,
-            performance_measures: filteredMeasures,
-            main_activities: filteredActivities
-          };
-        });
-
-        return {
-          ...objective,
-          initiatives: processedInitiatives
-        };
-      });
-
-      setProcessedObjectives(filteredObjectives);
-      console.log('PlanReviewTable: Processed objectives with fresh data:', filteredObjectives.length);
-    } catch (error) {
-      console.error('Error processing objectives:', error);
-      setProcessedObjectives([]);
-    } finally {
-      setIsRefreshingData(false);
-    }
-  }, [objectives, effectiveUserOrgId, freshPerformanceMeasures, freshMainActivities]);
 
   const formatCurrency = (amount: number): string => {
     return `$${amount.toLocaleString()}`;
@@ -256,6 +279,11 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
             const required = activity.budget.budget_calculation_type === 'WITH_TOOL' 
               ? Number(activity.budget.estimated_cost_with_tool || 0)
               : Number(activity.budget.estimated_cost_without_tool || 0);
+            
+            // Add PM/MA prefix to the name for clear identification
+            const displayName = isPerformanceMeasure 
+              ? `PM: ${item.name}` 
+              : `MA: ${item.name}`;
             
             totalRequired += required;
             totalGovernment += Number(activity.budget.government_treasury || 0);
@@ -331,13 +359,13 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   };
 
   // Show loading if no organization context
-  if (!effectiveUserOrgId || isLoadingMeasures || isLoadingActivities || isRefreshingData) {
+  if (!effectiveUserOrgId || isLoadingObjectives || isLoadingCompleteData || isRefreshingData) {
     return (
       <div className="flex items-center justify-center p-8">
         <Loader className="h-6 w-6 animate-spin mr-2" />
         <span className="text-gray-600">
           {isRefreshingData ? 'Refreshing plan data...' : 
-           isLoadingMeasures || isLoadingActivities ? 'Loading fresh data...' : 
+           isLoadingObjectives || isLoadingCompleteData ? 'Loading fresh data...' : 
            'Loading...'}
         </span>
       </div>
