@@ -230,6 +230,22 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     return ids;
   }, [objectives]);
   
+  // Process the fresh objectives data or use provided objectives
+  useEffect(() => {
+    if (freshObjectivesData && Array.isArray(freshObjectivesData) && freshObjectivesData.length > 0) {
+      // Use the fresh comprehensive data from API
+      console.log('PlanReviewTable: Using fresh objectives data:', freshObjectivesData.length);
+      setProcessedObjectives(freshObjectivesData);
+    } else if (objectives && objectives.length > 0) {
+      // Fallback to provided objectives if fresh data not available yet
+      console.log('PlanReviewTable: Using provided objectives as fallback:', objectives.length);
+      setProcessedObjectives(objectives);
+    } else {
+      // No data available
+      setProcessedObjectives([]);
+    }
+  }, [freshObjectivesData, objectives]);
+
   // Fetch organizations for mapping names
   useEffect(() => {
     const fetchOrganizations = async () => {
@@ -253,79 +269,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     
     fetchOrganizations();
   }, []);
-
-  // Process objectives with fresh data when any data changes
-  useEffect(() => {
-    if (!effectiveUserOrgId || !objectives?.length) {
-      console.log('PlanReviewTable: Waiting for organization ID or objectives...', { 
-        effectiveUserOrgId, 
-        objectivesLength: objectives?.length 
-      });
-      setProcessedObjectives([]);
-      return;
-    }
-
-    setIsRefreshingData(true);
-    console.log('PlanReviewTable: Processing objectives with fresh data and organization filter:', effectiveUserOrgId);
-    
-    try {
-      const filteredObjectives = objectives.map(objective => {
-        if (!objective) return objective;
-
-        // Process initiatives for this objective with fresh data
-        const userInitiatives = (objective.initiatives || []).filter(initiative => {
-          const isDefault = initiative.is_default === true;
-          const belongsToUserOrg = Number(initiative.organization) === Number(effectiveUserOrgId);
-          const hasNoOrg = !initiative.organization;
-          const belongsToOtherOrg = initiative.organization && Number(initiative.organization) !== Number(effectiveUserOrgId);
-          
-          const shouldInclude = (isDefault || belongsToUserOrg || hasNoOrg) && !belongsToOtherOrg;
-          
-          console.log(`Initiative "${initiative.name}": org=${initiative.organization}, userOrg=${effectiveUserOrgId}, shouldInclude=${shouldInclude}`);
-          
-          return shouldInclude;
-        });
-
-        // For each initiative, use fresh measures and activities data
-        const processedInitiatives = userInitiatives.map(initiative => {
-          // Use fresh performance measures data if available, otherwise use provided data
-          const freshMeasures = freshPerformanceMeasures?.[initiative.id] || [];
-          const providedMeasures = (initiative.performance_measures || []).filter(measure => 
-            !measure.organization || Number(measure.organization) === Number(effectiveUserOrgId)
-          );
-          const filteredMeasures = freshMeasures.length > 0 ? freshMeasures : providedMeasures;
-          
-          // Use fresh main activities data if available, otherwise use provided data
-          const freshActivities = freshMainActivities?.[initiative.id] || [];
-          const providedActivities = (initiative.main_activities || []).filter(activity => 
-            !activity.organization || Number(activity.organization) === Number(effectiveUserOrgId)
-          );
-          const filteredActivities = freshActivities.length > 0 ? freshActivities : providedActivities;
-          
-          console.log(`Initiative ${initiative.name}: fresh measures=${freshMeasures.length}, provided measures=${providedMeasures.length}, fresh activities=${freshActivities.length}, provided activities=${providedActivities.length}`);
-
-          return {
-            ...initiative,
-            performance_measures: filteredMeasures,
-            main_activities: filteredActivities
-          };
-        });
-
-        return {
-          ...objective,
-          initiatives: processedInitiatives
-        };
-      });
-
-      setProcessedObjectives(filteredObjectives);
-      console.log('PlanReviewTable: Processed objectives with fresh data:', filteredObjectives.length);
-    } catch (error) {
-      console.error('Error processing objectives:', error);
-      setProcessedObjectives([]);
-    } finally {
-      setIsRefreshingData(false);
-    }
-  }, [objectives, effectiveUserOrgId, freshPerformanceMeasures, freshMainActivities]);
 
   const formatCurrency = (amount: number): string => {
     return `$${amount.toLocaleString()}`;
