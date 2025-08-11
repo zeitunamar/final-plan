@@ -47,7 +47,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   const [processedObjectives, setProcessedObjectives] = useState<StrategicObjective[]>([]);
   const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [dataRefreshKey, setDataRefreshKey] = useState(0);
-  const [isLoadingCompleteData, setIsLoadingCompleteData] = useState(true);</parameter>
+  const [isLoadingCompleteData, setIsLoadingCompleteData] = useState(true);
 
   // Determine the effective user organization ID
   const effectiveUserOrgId = userOrgId || planData?.organization || null;
@@ -218,7 +218,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
   // Remove the old data fetching logic and replace with new comprehensive approach
   // Create a query key that includes all initiative IDs to fetch fresh data
-  const allInitiativeIds = React.useMemo(() => {</parameter>
+  const allInitiativeIds = React.useMemo(() => {
     const ids: string[] = [];
     objectives?.forEach(objective => {
       objective.initiatives?.forEach(initiative => {
@@ -228,6 +228,8 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       });
     });
     return ids;
+  }, [objectives]);
+
   // Fetch organizations for mapping names
   useEffect(() => {
     const fetchOrganizations = async () => {
@@ -279,11 +281,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
             const required = activity.budget.budget_calculation_type === 'WITH_TOOL' 
               ? Number(activity.budget.estimated_cost_with_tool || 0)
               : Number(activity.budget.estimated_cost_without_tool || 0);
-            
-            // Add PM/MA prefix to the name for clear identification
-            const displayName = isPerformanceMeasure 
-              ? `PM: ${item.name}` 
-              : `MA: ${item.name}`;
             
             totalRequired += required;
             totalGovernment += Number(activity.budget.government_treasury || 0);
@@ -492,18 +489,13 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           ? Number(item.q1_target || 0) + Number(item.q2_target || 0)
           : Number(item.q2_target || 0);
 
-        // Add prefix to name based on type for clear identification
-        const displayName = isPerformanceMeasure 
-          ? `PM: ${item.name}` 
-          : `MA: ${item.name}`;
-
         tableRows.push({
           no: objectiveAdded ? '' : (objIndex + 1),
           objective: objectiveAdded ? '' : objective.title,
           objectiveWeight: objectiveAdded ? '' : `${effectiveWeight.toFixed(1)}%`,
           initiative: initiativeAdded ? '' : initiative.name,
           initiativeWeight: initiativeAdded ? '' : `${initiative.weight}%`,
-          itemName: displayName,
+          itemName: item.name,
           itemType: item.type,
           itemWeight: `${item.weight}%`,
           baseline: item.baseline || '-',
