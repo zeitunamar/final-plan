@@ -850,7 +850,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
     try {
       processedObjectives.forEach((objective: any) => {
-        objective?.initiatives?.forEach((initiative: any) => {
+        objective.initiatives?.forEach((initiative: any) => {
           initiative?.main_activities?.forEach((activity: any) => {
             if (!activity?.budget) return;
             
@@ -882,7 +882,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     return (
       <div className="flex items-center justify-center p-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-        <span className="ml-3 text-gray-600">Loading organization data...</span>
+        <span className="ml-3 text-gray-600">{loadingProgress || 'Loading plan data...'}</span>
       </div>
     );
   }
@@ -908,13 +908,12 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   }
 
   // Empty state
-  if (!processedObjectives || processedObjectives.length === 0) {
+  if (!filteredObjectives || filteredObjectives.length === 0) {
     return (
       <div className="p-8 bg-gray-50 rounded-lg border border-gray-200 text-center">
         <Target className="h-12 w-12 text-gray-400 mx-auto mb-4" />
         <h3 className="text-lg font-medium text-gray-800 mb-2">No Plan Data Available</h3>
         <p className="text-gray-600">No objectives found to display in the plan table.</p>
-        <p className="text-gray-600">No objectives or initiatives found for this planner's organization.</p>
       </div>
     );
   }
