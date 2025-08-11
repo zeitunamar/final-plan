@@ -363,8 +363,8 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (onDeleteBudget && window.confirm('Are you sure you want to delete this budget? This action cannot be undone.')) {
-                          onDeleteBudget(activity.budget.id);
+                        if (window.confirm('Are you sure you want to delete this budget? This action cannot be undone.')) {
+                          onDeleteBudget?.(activity.budget.id);
                         }
                       }}
                       className="text-xs text-red-600 hover:text-red-800 flex items-center px-2 py-1 bg-red-50 rounded"
