@@ -197,7 +197,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   isPreviewMode = false,
   userOrgId = null,
   isViewOnly = false,
-  planData</parameter>
+  planData
 }) => {
   const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
   const [plannerOrgId, setPlannerOrgId] = useState<number | null>(null);
@@ -352,31 +352,15 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     setProcessedObjectives(filteredObjectives);
   }, [objectives, plannerOrgId, isAuthLoaded]);
 
-  // Fetch organizations for mapping names
-  useEffect(() => {
-    const fetchOrganizations = async () => {
-        return;
-      }
-      
-        const response = await organizations.getAll();
-        const orgMap: Record<string, string> = {};
-        
-        if (response && Array.isArray(response)) {
-          response.forEach((org: any) => {
-            if (org && org.id) {
-              orgMap[org.id] = org.name;
-            }
-          });
-        }
-        
-        setOrganizationsMap(orgMap);
-      } catch (error) {
-        console.error('Failed to fetch organizations:', error);
-      }
-    };
-    
-    fetchOrganizations();
-  }, []);</parameter>
+  // Don't render until we have the planner organization context
+  if (!isAuthLoaded || !plannerOrgId) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader className="h-6 w-6 animate-spin mr-2" />
+        <span>Loading planner context...</span>
+      </div>
+    );
+  }
 
   // Helper function to filter data by organization - ONLY show user's organization data
   const filterByUserOrganization = (objectives: any[]) => {
