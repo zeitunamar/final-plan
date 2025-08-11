@@ -95,21 +95,11 @@ const Planning: React.FC = () => {
     queryFn: () => auth.getCurrentUser(),
   });
 
-  // Fetch organizations with better error handling
-  const { data: organizationsData, isLoading: isLoadingOrgs, error: orgsError } = useQuery({
+  // Fetch organizations
+  const { data: organizationsData, isLoading: isLoadingOrgs } = useQuery({
     queryKey: ['organizations'],
-    queryFn: async () => {
-      try {
-        const response = await organizations.getAll();
-        return response;
-      } catch (error) {
-        console.error('Error fetching organizations:', error);
-        throw error;
-      }
-    },
+    queryFn: () => organizations.getAll(),
     enabled: !!authData?.isAuthenticated,
-    retry: 2,
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
   // Fetch objectives with performance optimization
@@ -490,33 +480,11 @@ const Planning: React.FC = () => {
     );
   }
 
-  if (orgsError) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-        <h3 className="text-lg font-medium text-red-800 mb-2">Error Loading Organizations</h3>
-        <p className="text-red-600 mb-4">Failed to load organization data</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200"
-        >
-          Reload Page
-        </button>
-      </div>
-    );
-  }
-
   if (!isPlanner(authData.userOrganizations) && !isAdmin(authData.userOrganizations)) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <AlertCircle className="h-12 w-12 text-amber-500 mb-4" />
         <h3 className="text-lg font-medium text-amber-800 mb-2">{t('planning.permissions.noAccess')}</h3>
-        <p className="text-amber-600 mb-4">{t('planning.permissions.plannerRequired')}</p>
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="px-4 py-2 bg-amber-100 text-amber-700 rounded-md hover:bg-amber-200"
-        >
-          Return to Dashboard
         </button>
       </div>
     );
@@ -524,12 +492,6 @@ const Planning: React.FC = () => {
 
   if (!userOrganization) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <Building2 className="h-12 w-12 text-gray-400 mb-4" />
-        <h3 className="text-lg font-medium text-gray-800 mb-2">No Organization Access</h3>
-        <p className="text-gray-600 mb-4">
-          You don't have access to any organization for planning.
-        </p>
         <button
           onClick={() => navigate('/dashboard')}
           className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
