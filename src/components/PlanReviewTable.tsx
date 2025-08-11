@@ -204,6 +204,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [loadingProgress, setLoadingProgress] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+  const [currentUserOrgId, setCurrentUserOrgId] = useState<number | null>(null);
 
   // Fetch organizations for mapping IDs to names
   useEffect(() => {
@@ -232,6 +233,30 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     
     fetchOrganizations();
   }, []);
+
+  // Fetch current user's organization ID if not provided
+  useEffect(() => {
+    const fetchUserOrganization = async () => {
+      if (userOrgId) {
+        setCurrentUserOrgId(userOrgId);
+        return;
+      }
+      
+      try {
+        const authData = await auth.getCurrentUser();
+        if (authData?.userOrganizations?.length > 0) {
+          const orgId = authData.userOrganizations[0].organization;
+          setCurrentUserOrgId(orgId);
+          console.log('PlanReviewTable: Set current user org ID:', orgId);
+        }
+      } catch (error) {
+        console.error('Failed to fetch user organization:', error);
+      }
+    };
+    
+    fetchUserOrganization();
+  }, [userOrgId]);
+
   // Enhanced data fetching for production
   const fetchCompleteData = async (objectivesList: any[]) => {
     if (!objectivesList || objectivesList.length === 0) {
@@ -239,8 +264,8 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       return [];
     }
 
-    if (!userOrgId) {
-      console.error('No user organization ID available for filtering');
+    if (!currentUserOrgId) {
+      console.error('PlanReviewTable: No user organization ID available for filtering');
       return [];
     }
     console.log(`Processing ${objectivesList.length} objectives for complete data`);
@@ -262,29 +287,30 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         
         console.log(`Found ${objectiveInitiatives.length} initiatives for objective ${objective.id}`);
 
-        // CRITICAL FIX: Strict filtering - only show initiatives from user's organization or defaults
+        // CRITICAL FIX: SUPER STRICT filtering - NEVER show initiatives from other organizations
         const filteredInitiatives = objectiveInitiatives.filter(initiative => {
-          // ENHANCED FILTERING: Only include initiatives that truly belong to the planner's organization
+          // ABSOLUTE FILTERING: Only include initiatives that are either:
+          // 1. Default initiatives (available to all)
+          // 2. Created by the EXACT same organization as the current user
           const isDefault = initiative.is_default === true;
-          const belongsToUserOrg = initiative.organization === userOrgId;
+          const belongsToCurrentUserOrg = initiative.organization === currentUserOrgId;
           const hasNoOrg = !initiative.organization; // Legacy data without organization
           
-          // CRITICAL: For plan viewing, we want STRICT filtering
-          // Only include if it's a default initiative OR explicitly belongs to the current user's organization
-          const shouldInclude = isDefault || belongsToUserOrg;
+          // SUPER STRICT: Only include if it's a default initiative OR explicitly belongs to current user's organization
+          const shouldInclude = isDefault || belongsToCurrentUserOrg;
           
-          // Additional check: If initiative has an organization and it's NOT the current user's, exclude it
-          if (initiative.organization && initiative.organization !== userOrgId && !isDefault) {
-            console.log(`EXCLUDING Initiative "${initiative.name}": belongs to org ${initiative.organization}, not current org ${userOrgId}`);
+          // ABSOLUTE EXCLUSION: If initiative has an organization and it's NOT the current user's, ALWAYS exclude
+          if (initiative.organization && initiative.organization !== currentUserOrgId && !isDefault) {
+            console.log(`ABSOLUTELY EXCLUDING Initiative "${initiative.name}": belongs to org ${initiative.organization}, not current org ${currentUserOrgId}`);
             return false;
           }
           
-          console.log(`Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, userOrg=${userOrgId}, belongsToUser=${belongsToUserOrg}, shouldInclude=${shouldInclude}`);
+          console.log(`PlanReviewTable Initiative Filter: "${initiative.name}" - isDefault=${isDefault}, org=${initiative.organization}, currentUserOrg=${currentUserOrgId}, belongsToCurrentUser=${belongsToCurrentUserOrg}, FINAL_DECISION=${shouldInclude}`);
           
           return shouldInclude;
         });
 
-        console.log(`Filtered to ${filteredInitiatives.length} initiatives for user org ${userOrgId}`);
+        console.log(`PlanReviewTable: Filtered from ${objectiveInitiatives.length} to ${filteredInitiatives.length} initiatives for current user org ${currentUserOrgId}`);
 
         // Process each initiative sequentially to avoid overwhelming the server
         const enrichedInitiatives = [];
@@ -307,40 +333,39 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
             const measures = performanceMeasuresData.status === 'fulfilled' ? performanceMeasuresData.value : [];
             const activities = mainActivitiesData.status === 'fulfilled' ? mainActivitiesData.value : [];
 
-            // CRITICAL FIX: Strict filtering for measures and activities
+            // ABSOLUTE FILTERING: Measures and activities MUST belong to current user organization
             const filteredMeasures = measures.filter(measure => {
-              const belongsToUserOrg = measure.organization === userOrgId;
+              const belongsToCurrentUserOrg = measure.organization === currentUserOrgId;
               const hasNoOrg = !measure.organization; // Legacy data
               
-              // STRICT FILTERING: Only include measures that truly belong to current organization
-              // For legacy data without organization, only include if there's no organization specified
-              const shouldInclude = belongsToUserOrg || hasNoOrg;
+              // ABSOLUTE FILTERING: Only include measures from current user's organization
+              const shouldInclude = belongsToCurrentUserOrg || hasNoOrg;
               
-              // Additional check: If measure has an organization and it's NOT the current user's, exclude it
-              if (measure.organization && measure.organization !== userOrgId) {
-                console.log(`EXCLUDING Measure "${measure.name}": belongs to org ${measure.organization}, not current org ${userOrgId}`);
+              // ABSOLUTE EXCLUSION: If measure belongs to another organization, NEVER include
+              if (measure.organization && measure.organization !== currentUserOrgId) {
+                console.log(`ABSOLUTELY EXCLUDING Measure "${measure.name}": belongs to org ${measure.organization}, not current user org ${currentUserOrgId}`);
                 return false;
               }
               
-              console.log(`Measure "${measure.name}": org=${measure.organization}, userOrg=${userOrgId}, belongsToUser=${belongsToUserOrg}, shouldInclude=${shouldInclude}`);
+              console.log(`PlanReviewTable Measure Filter: "${measure.name}" - org=${measure.organization}, currentUserOrg=${currentUserOrgId}, belongsToCurrentUser=${belongsToCurrentUserOrg}, FINAL_DECISION=${shouldInclude}`);
               
               return shouldInclude;
             });
             
             const filteredActivities = activities.filter(activity => {
-              const belongsToUserOrg = activity.organization === userOrgId;
+              const belongsToCurrentUserOrg = activity.organization === currentUserOrgId;
               const hasNoOrg = !activity.organization; // Legacy data
               
-              // STRICT FILTERING: Only include activities that truly belong to current organization
-              const shouldInclude = belongsToUserOrg || hasNoOrg;
+              // ABSOLUTE FILTERING: Only include activities from current user's organization
+              const shouldInclude = belongsToCurrentUserOrg || hasNoOrg;
               
-              // Additional check: If activity has an organization and it's NOT the current user's, exclude it
-              if (activity.organization && activity.organization !== userOrgId) {
-                console.log(`EXCLUDING Activity "${activity.name}": belongs to org ${activity.organization}, not current org ${userOrgId}`);
+              // ABSOLUTE EXCLUSION: If activity belongs to another organization, NEVER include
+              if (activity.organization && activity.organization !== currentUserOrgId) {
+                console.log(`ABSOLUTELY EXCLUDING Activity "${activity.name}": belongs to org ${activity.organization}, not current user org ${currentUserOrgId}`);
                 return false;
               }
               
-              console.log(`Activity "${activity.name}": org=${activity.organization}, userOrg=${userOrgId}, belongsToUser=${belongsToUserOrg}, shouldInclude=${shouldInclude}`);
+              console.log(`PlanReviewTable Activity Filter: "${activity.name}" - org=${activity.organization}, currentUserOrg=${currentUserOrgId}, belongsToCurrentUser=${belongsToCurrentUserOrg}, FINAL_DECISION=${shouldInclude}`);
               
               return shouldInclude;
             });
@@ -423,15 +448,77 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         console.log('Provided objectives:', objectives?.length || 0);
         
         if (objectives && objectives.length > 0) {
+          // CRITICAL FIX: Even in preview mode, filter the provided objectives to remove other org data
+          const strictlyFilteredObjectives = objectives.map(objective => {
+            if (!objective.initiatives) return objective;
+            
+            // Filter initiatives to ONLY include current user's organization or defaults
+            const userInitiatives = objective.initiatives.filter(initiative => {
+              const isDefault = initiative.is_default === true;
+              const belongsToCurrentUser = initiative.organization === currentUserOrgId;
+              const hasNoOrg = !initiative.organization;
+              const shouldInclude = isDefault || belongsToCurrentUser;
+              
+              // ABSOLUTE EXCLUSION: If initiative belongs to another organization, NEVER include
+              if (initiative.organization && initiative.organization !== currentUserOrgId && !isDefault) {
+                console.log(`PREVIEW MODE EXCLUDING Initiative "${initiative.name}": belongs to org ${initiative.organization}, not current user org ${currentUserOrgId}`);
+                return false;
+              }
+              
+              console.log(`Preview Initiative Filter: "${initiative.name}" - isDefault=${isDefault}, org=${initiative.organization}, currentUserOrg=${currentUserOrgId}, FINAL_DECISION=${shouldInclude}`);
+              return shouldInclude;
+            });
+            
+            // Filter measures and activities within each initiative
+            const filteredInitiatives = userInitiatives.map(initiative => {
+              const filteredMeasures = (initiative.performance_measures || []).filter(measure => {
+                const belongsToCurrentUser = measure.organization === currentUserOrgId;
+                const hasNoOrg = !measure.organization;
+                const shouldInclude = belongsToCurrentUser || hasNoOrg;
+                
+                if (measure.organization && measure.organization !== currentUserOrgId) {
+                  console.log(`PREVIEW MODE EXCLUDING Measure "${measure.name}": belongs to org ${measure.organization}, not current user org ${currentUserOrgId}`);
+                  return false;
+                }
+                
+                return shouldInclude;
+              });
+              
+              const filteredActivities = (initiative.main_activities || []).filter(activity => {
+                const belongsToCurrentUser = activity.organization === currentUserOrgId;
+                const hasNoOrg = !activity.organization;
+                const shouldInclude = belongsToCurrentUser || hasNoOrg;
+                
+                if (activity.organization && activity.organization !== currentUserOrgId) {
+                  console.log(`PREVIEW MODE EXCLUDING Activity "${activity.name}": belongs to org ${activity.organization}, not current user org ${currentUserOrgId}`);
+                  return false;
+                }
+                
+                return shouldInclude;
+              });
+              
+              return {
+                ...initiative,
+                performance_measures: filteredMeasures,
+                main_activities: filteredActivities
+              };
+            });
+            
+            return {
+              ...objective,
+              initiatives: filteredInitiatives
+            };
+          });
+          
           // Log the structure of provided objectives
-          objectives.forEach((obj, index) => {
+          strictlyFilteredObjectives.forEach((obj, index) => {
             const initiativesCount = obj.initiatives?.length || 0;
             const measuresCount = obj.initiatives?.reduce((sum, init) => sum + (init.performance_measures?.length || 0), 0) || 0;
             const activitiesCount = obj.initiatives?.reduce((sum, init) => sum + (init.main_activities?.length || 0), 0) || 0;
-            console.log(`Table Objective ${index + 1}: ${obj.title} - ${initiativesCount} initiatives, ${measuresCount} measures, ${activitiesCount} activities`);
+            console.log(`PlanReviewTable Filtered Objective ${index + 1}: ${obj.title} - ${initiativesCount} initiatives, ${measuresCount} measures, ${activitiesCount} activities`);
           });
           
-          setProcessedObjectives(objectives);
+          setProcessedObjectives(strictlyFilteredObjectives);
           setIsLoading(false);
           return;
         } else {
@@ -450,7 +537,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       }
 
       // Wait for userOrgId to be available before processing
-      if (!userOrgId) {
+      if (!currentUserOrgId) {
         console.log('Waiting for user organization ID...');
         return;
       }
@@ -492,7 +579,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [objectives, userOrgId, retryCount, isPreviewMode, isViewOnly]);
+  }, [objectives, currentUserOrgId, retryCount, isPreviewMode, isViewOnly]);
 
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);
