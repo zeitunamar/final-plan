@@ -871,6 +871,7 @@ const PlanSummary: React.FC = () => {
                   isPreviewMode={true}
                   userOrgId={plannerOrgId}
                   isViewOnly={true}
+                  planData={filteredPlanData}
                 />
               </div>
             </div>
