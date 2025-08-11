@@ -322,10 +322,8 @@ const PlanSummary: React.FC = () => {
           No: objIndex + 1,
           'Strategic Objective': objective.title || 'Untitled Objective',
           'Strategic Objective Weight': `${calculatedWeight.toFixed(1)}%`,
-          'Strategic Initiative': 'No initiatives',
-          'Initiative Weight': '-',
-          'Performance Measure/Main Activity': '-',
-          'Weight': '-',
+        // Get objective weight directly from database (effective_weight, planner_weight, or weight)
+        const objectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
           'Baseline': '-',
           'Q1Target': '-',
           'Q2Target': '-',
@@ -334,7 +332,7 @@ const PlanSummary: React.FC = () => {
           'Q4Target': '-',
           'AnnualTarget': '-',
           'Implementor': 'Ministry of Health',
-          'BudgetRequired': '-',
+            'Strategic Objective Weight': `${objectiveWeight.toFixed(1)}%`,
           'Government': '-',
           'Partners': '-',
           'SDG': '-',
@@ -430,11 +428,11 @@ const PlanSummary: React.FC = () => {
               const sixMonthTarget = item.target_type === 'cumulative' 
                 ? Number(item.q1_target || 0) + Number(item.q2_target || 0) 
                 : Number(item.q2_target || 0);
-              
+                  'Strategic Objective Weight': objectiveAdded ? '' : `${objectiveWeight.toFixed(1)}%`,
               exportData.push({
                 No: objectiveAdded ? '' : (objIndex + 1).toString(),
                 'Strategic Objective': objectiveAdded ? '' : (objective.title || 'Untitled Objective'),
-                'Strategic Objective Weight': objectiveAdded ? '' : `${calculatedWeight.toFixed(1)}%`,
+                'Strategic Objective Weight': objectiveAdded ? '' : `${objectiveWeight.toFixed(1)}%`,
                 'Strategic Initiative': initiativeAddedForObjective ? '' : (initiative.name || 'Untitled Initiative'),
                 'Initiative Weight': initiativeAddedForObjective ? '' : `${initiative.weight || 0}%`,
                 'Performance Measure/Main Activity': item.name || 'Untitled Item',

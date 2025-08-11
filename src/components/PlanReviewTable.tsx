@@ -696,7 +696,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                 <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Baseline</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Q1 Target</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Q2 Target</th>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(objective.effective_weight || objective.planner_weight || objective.weight).toFixed(1)}%</td>
+                <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">6-Month Target</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Q3 Target</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Q4 Target</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Annual Target</th>
@@ -712,11 +712,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {processedObjectives.map((objective, objIndex) => {
-                // Calculate objective weight by summing initiative weights
-                const calculatedWeight = objective.initiatives?.reduce((sum, initiative) => {
-                  return sum + (Number(initiative.weight) || 0);
-                }, 0) || 0;
-                
                 let objectiveRowSpan = 0;
                 
                 // Calculate total rows for this objective
@@ -738,9 +733,9 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                     <tr key={`obj-${objective.id}-empty`} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{objIndex + 1}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{objective.title}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{calculatedWeight.toFixed(1)}%</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(objective.effective_weight || objective.planner_weight || objective.weight).toFixed(1)}%</td>
                       <td className="px-6 py-4 text-sm text-gray-500 italic">No initiatives</td>
-                              {(objective.effective_weight || objective.planner_weight || objective.weight).toFixed(1)}%
+                      <td className="px-6 py-4 text-sm text-gray-500">-</td>
                       <td className="px-6 py-4 text-sm text-gray-500">-</td>
                       <td className="px-6 py-4 text-sm text-gray-500">-</td>
                       <td className="px-6 py-4 text-sm text-gray-500">-</td>
@@ -783,7 +778,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                                 )}
                               </td>
                               <td rowSpan={objectiveRowSpan} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 bg-gray-50">
-                                  {(objective.effective_weight || objective.planner_weight || objective.weight).toFixed(1)}%
+                                {(objective.effective_weight || objective.planner_weight || objective.weight).toFixed(1)}%
                               </td>
                             </>
                           )}
@@ -857,7 +852,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                                   )}
                                 </td>
                                 <td rowSpan={objectiveRowSpan} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 bg-gray-50">
-                                    {calculatedWeight.toFixed(1)}%
+                                  {(objective.effective_weight || objective.planner_weight || objective.weight).toFixed(1)}%
                                 </td>
                               </>
                             )}
