@@ -206,6 +206,35 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   const [loadingProgress, setLoadingProgress] = useState('');
   const [retryCount, setRetryCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
+  const [processedObjectives, setProcessedObjectives] = useState<StrategicObjective[]>([]);
+
+  // Determine the effective user organization ID
+  const effectiveUserOrgId = userOrgId || planData?.organization || null;
+
+  // Fetch organizations for mapping names
+  useEffect(() => {
+    const fetchOrganizations = async () => {
+      try {
+        const response = await organizations.getAll();
+        const orgMap: Record<string, string> = {};
+        
+        if (response && Array.isArray(response)) {
+          response.forEach((org: any) => {
+            if (org && org.id) {
+              orgMap[org.id] = org.name;
+            }
+          });
+        }
+        
+        setOrganizationsMap(orgMap);
+      } catch (error) {
+        console.error('Failed to fetch organizations:', error);
+      }
+    };
+    
+    fetchOrganizations();
+  }, []);
 
   // Fetch organizations for mapping IDs to names
   useEffect(() => {
@@ -273,6 +302,113 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     
     initializePlannerContext();
   }, [userOrgId, planData]);
+
+  // Process objectives when plan data or organization context changes
+  useEffect(() => {
+    if (!effectiveUserOrgId || !objectives?.length) {
+      console.log('PlanReviewTable: Waiting for organization ID or objectives...', { 
+        effectiveUserOrgId, 
+        objectivesLength: objectives?.length 
+      });
+      return;
+    }
+
+    console.log('PlanReviewTable: Processing objectives with organization filter:', effectiveUserOrgId);
+    console.log('PlanReviewTable: Input objectives count:', objectives.length);
+
+    try {
+      const filteredObjectives = objectives.map(objective => {
+        if (!objective) return objective;
+
+        console.log(`Processing objective: ${objective.title} (ID: ${objective.id})`);
+        
+        // Use the objective weight from the plan (effective_weight, planner_weight, or weight)
+        const objectiveWeight = objective.effective_weight || 
+                               objective.planner_weight || 
+                               objective.weight;
+        
+        console.log(`Objective weight: ${objectiveWeight} (effective: ${objective.effective_weight}, planner: ${objective.planner_weight}, original: ${objective.weight})`);
+
+        if (!objective.initiatives || !Array.isArray(objective.initiatives)) {
+          console.log(`Objective ${objective.id} has no initiatives`);
+          return {
+            ...objective,
+            effective_weight: objectiveWeight,
+            initiatives: []
+          };
+        }
+
+        console.log(`Objective ${objective.id} has ${objective.initiatives.length} initiatives`);
+
+        // STRICT FILTERING: Only include initiatives that belong to the planner's organization OR are defaults
+        const userInitiatives = (objective.initiatives || []).filter(initiative => {
+          const isDefault = initiative.is_default === true;
+          const belongsToUserOrg = Number(initiative.organization) === Number(effectiveUserOrgId);
+          const hasNoOrg = !initiative.organization; // Legacy data without organization
+          
+          // ABSOLUTELY EXCLUDE if it belongs to another organization
+          const belongsToOtherOrg = initiative.organization && Number(initiative.organization) !== Number(effectiveUserOrgId);
+          
+          const shouldInclude = (isDefault || belongsToUserOrg || hasNoOrg) && !belongsToOtherOrg;
+          
+          console.log(`PlanReviewTable: Initiative "${initiative.name}": org=${initiative.organization}, userOrg=${effectiveUserOrgId}, isDefault=${isDefault}, belongsToUserOrg=${belongsToUserOrg}, belongsToOtherOrg=${belongsToOtherOrg}, shouldInclude=${shouldInclude}`);
+          
+          return shouldInclude;
+        });
+
+        console.log(`Filtered from ${objective.initiatives.length} to ${userInitiatives.length} initiatives for user org ${effectiveUserOrgId}`);
+
+        // For each initiative, filter measures and activities by organization
+        const processedInitiatives = userInitiatives.map(initiative => {
+          if (!initiative) return initiative;
+
+          console.log(`Processing initiative: ${initiative.name} (ID: ${initiative.id})`);
+
+          // Filter performance measures by organization
+          const filteredMeasures = (initiative.performance_measures || []).filter(measure => {
+            const belongsToUserOrg = !measure.organization || Number(measure.organization) === Number(effectiveUserOrgId);
+            console.log(`PlanReviewTable: Measure "${measure.name}": org=${measure.organization}, belongsToUserOrg=${belongsToUserOrg}`);
+            return belongsToUserOrg;
+          });
+
+          // Filter main activities by organization  
+          const filteredActivities = (initiative.main_activities || []).filter(activity => {
+            const belongsToUserOrg = !activity.organization || Number(activity.organization) === Number(effectiveUserOrgId);
+            console.log(`PlanReviewTable: Activity "${activity.name}": org=${activity.organization}, belongsToUserOrg=${belongsToUserOrg}`);
+            return belongsToUserOrg;
+          });
+
+          console.log(`Initiative ${initiative.id}: ${filteredMeasures.length} measures, ${filteredActivities.length} activities`);
+
+          return {
+            ...initiative,
+            performance_measures: filteredMeasures,
+            main_activities: filteredActivities
+          };
+        });
+
+        return {
+          ...objective,
+          effective_weight: objectiveWeight,
+          initiatives: processedInitiatives
+        };
+      });
+
+      console.log('Final processed objectives:', filteredObjectives.length);
+      filteredObjectives.forEach((obj, index) => {
+        const initiativesCount = obj.initiatives?.length || 0;
+        const measuresCount = obj.initiatives?.reduce((sum, init) => sum + (init.performance_measures?.length || 0), 0) || 0;
+        const activitiesCount = obj.initiatives?.reduce((sum, init) => sum + (init.main_activities?.length || 0), 0) || 0;
+        console.log(`PlanReviewTable Objective ${index + 1}: ${obj.title} - ${initiativesCount} initiatives, ${measuresCount} measures, ${activitiesCount} activities`);
+      });
+    } catch (error) {
+      console.error('Error processing objectives:', error);
+      setProcessedObjectives([]);
+      return;
+    }
+    
+    setProcessedObjectives(filteredObjectives);
+  }, [objectives, effectiveUserOrgId, planData]);
 
   // Process and filter objectives to show only planner's organization data
   useEffect(() => {
@@ -860,12 +996,12 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   const totalAvailable = budgetTotals.governmentTotal + budgetTotals.sdgTotal + budgetTotals.partnersTotal + budgetTotals.otherTotal;
   const fundingGap = Math.max(0, budgetTotals.total - totalAvailable);
 
-  // Wait for authentication to load only if we don't have userOrgId
-  if (!authLoaded && !userOrgId) {
+  // Show loading state only if we don't have the effective organization ID
+  if (!effectiveUserOrgId) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-        <span className="ml-3 text-gray-600">Loading organization data...</span>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
+        <span className="text-gray-600">Loading organization context...</span>
       </div>
     );
   }
