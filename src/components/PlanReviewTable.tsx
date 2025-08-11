@@ -63,10 +63,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         setOrganizationsMap(orgMap);
       } catch (error) {
         console.error('Failed to fetch organizations:', error);
-            // Add prefix based on item type
-            const displayName = item.type === 'Performance Measure' 
-              ? `PM: ${item.name}` 
-              : `MA: ${item.name}`;
       }
     };
     
@@ -74,7 +70,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   }, []);
 
   // Process objectives when data changes
-              itemName: displayName,
+  useEffect(() => {
     if (!effectiveUserOrgId || !objectives?.length) {
       console.log('PlanReviewTable: Waiting for organization ID or objectives...', { 
         effectiveUserOrgId, 
@@ -363,13 +359,18 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           ? Number(item.q1_target || 0) + Number(item.q2_target || 0)
           : Number(item.q2_target || 0);
 
+        // Add prefix based on item type
+        const displayName = item.type === 'Performance Measure' 
+          ? `PM: ${item.name}` 
+          : `MA: ${item.name}`;
+
         tableRows.push({
           no: objectiveAdded ? '' : (objIndex + 1),
           objective: objectiveAdded ? '' : objective.title,
           objectiveWeight: objectiveAdded ? '' : `${effectiveWeight.toFixed(1)}%`,
           initiative: initiativeAdded ? '' : initiative.name,
           initiativeWeight: initiativeAdded ? '' : `${initiative.weight}%`,
-          itemName: item.name,
+          itemName: displayName,
           itemType: item.type,
           itemWeight: `${item.weight}%`,
           baseline: item.baseline || '-',
@@ -477,6 +478,16 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                 <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Q2 Target</th>
                 <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20 bg-blue-700">6-Month Target</th>
                 <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Q3 Target</th>
+                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Q4 Target</th>
+                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Annual Target</th>
+                <th className="px-4 py-4 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Implementor</th>
+                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Budget Required</th>
+                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Government</th>
+                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Partners</th>
+                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">SDG</th>
+                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Other</th>
+                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Total Available</th>
+                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider">Gap</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -515,7 +526,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                       {row.itemType === 'Main Activity' && (
                         <Activity className="h-4 w-4 text-green-600 mr-2 flex-shrink-0" title="Main Activity" />
                       )}
-                      <div className="truncate" title={row.displayName}>{row.displayName}</div>
+                      <div className="truncate" title={row.itemName}>{row.itemName}</div>
                     </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
