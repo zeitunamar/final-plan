@@ -81,8 +81,8 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         const allObjectives = objectivesResponse?.data || [];
         
         // Filter to only selected objectives if provided
-        const targetObjectives = objectives.length > 0 
-          ? allObjectives.filter(obj => objectives.some(selected => selected.id === obj.id))
+        const targetObjectives = (objectives && objectives.length > 0)
+          ? allObjectives.filter(obj => (objectives || []).some(selected => selected.id === obj.id))
           : allObjectives;
         
         console.log(`Processing ${targetObjectives.length} objectives for complete data`);
@@ -214,14 +214,13 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       console.log('PlanReviewTable: Dependencies changed, triggering refresh');
       handleManualRefresh();
     }
-  }, [effectiveUserOrgId, objectives.length]);
 
   // Remove the old data fetching logic and replace with new comprehensive approach
   // Create a query key that includes all initiative IDs to fetch fresh data
   const allInitiativeIds = React.useMemo(() => {
     const ids: string[] = [];
-    objectives?.forEach(objective => {
-      objective.initiatives?.forEach(initiative => {
+    (objectives || []).forEach(objective => {
+      (objective?.initiatives || []).forEach(initiative => {
         if (initiative.id) {
           ids.push(initiative.id);
         }
@@ -236,15 +235,15 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       // Use the fresh comprehensive data from API
       console.log('PlanReviewTable: Using fresh objectives data:', freshObjectivesData.length);
       setProcessedObjectives(freshObjectivesData);
-    } else if (objectives && objectives.length > 0) {
+    } else if (objectives && Array.isArray(objectives) && objectives.length > 0) {
       // Fallback to provided objectives if fresh data not available yet
       console.log('PlanReviewTable: Using provided objectives as fallback:', objectives.length);
       setProcessedObjectives(objectives);
     } else {
       // No data available
+      console.log('PlanReviewTable: No objectives data available');
       setProcessedObjectives([]);
     }
-  }, [freshObjectivesData, objectives]);
 
   // Fetch organizations for mapping names
   useEffect(() => {
