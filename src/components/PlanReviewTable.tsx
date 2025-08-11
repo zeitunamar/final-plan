@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { FileSpreadsheet, File as FilePdf, Building2, AlertCircle, CheckCircle, RefreshCw, Loader, Calendar, User, Target, Activity, DollarSign } from 'lucide-react';
 import { format } from 'date-fns';
 import { exportToExcel, exportToPDF, processDataForExport } from '../lib/utils/export';
-import { initiatives, performanceMeasures, mainActivities, api, auth } from '../lib/api';
+import { organizations, auth } from '../lib/api';
 import axios from 'axios';
 
 interface PlanReviewTableProps {
-  objectives: any[];
+  objectives: StrategicObjective[]; // This should be the plan's selected objectives with their data
   onSubmit: () => Promise<void>;
   isSubmitting: boolean;
   organizationName: string;
@@ -17,6 +16,7 @@ interface PlanReviewTableProps {
   isPreviewMode?: boolean;
   userOrgId?: number | null;
   isViewOnly?: boolean;
+  planData?: any; // Add plan data to get selected objectives and weights
 }
 
 // Production-safe API helper with comprehensive retry logic
@@ -196,11 +196,12 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   planType,
   isPreviewMode = false,
   userOrgId = null,
-  isViewOnly = false
+  isViewOnly = false,
+  planData</parameter>
 }) => {
   const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
-  const [processedObjectives, setProcessedObjectives] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [plannerOrgId, setPlannerOrgId] = useState<number | null>(null);
+  const [isAuthLoaded, setIsAuthLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingProgress, setLoadingProgress] = useState('');
   const [retryCount, setRetryCount] = useState(0);
@@ -234,34 +235,148 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     
     fetchOrganizations();
   }, []);
+  const [processedObjectives, setProcessedObjectives] = useState<StrategicObjective[]>([]);
 
-  // Fetch current user's organization ID if not provided
+  // Get planner's organization ID from auth or plan data
   useEffect(() => {
-    const fetchUserOrganization = async () => {
-      if (userOrgId) {
-        setCurrentUserOrgId(userOrgId);
-        setAuthLoaded(true);
-        return;
-      }
-      
+    const initializePlannerContext = async () => {
       try {
+        // First try to get from userOrgId prop
+        if (userOrgId) {
+          console.log('Using userOrgId prop:', userOrgId);
+          setPlannerOrgId(userOrgId);
+          setIsAuthLoaded(true);
+          return;
+        }
+        
+        // Try to get from plan data
+        if (planData?.organization) {
+          console.log('Using plan organization:', planData.organization);
+          setPlannerOrgId(Number(planData.organization));
+          setIsAuthLoaded(true);
+          return;
+        }
+        
+        // Fallback to current user's organization
         const authData = await auth.getCurrentUser();
-        if (authData.userOrganizations && authData.userOrganizations.length > 0) {
+        if (authData.userOrganizations?.length > 0) {
           const orgId = authData.userOrganizations[0].organization;
-          setCurrentUserOrgId(orgId);
-          console.log('PlanReviewTable - Current user organization ID:', orgId);
-        } else {
-          console.warn('PlanReviewTable - No user organizations found');
+          console.log('Using current user organization:', orgId);
+          setPlannerOrgId(orgId);
         }
       } catch (error) {
-        console.error('PlanReviewTable - Failed to fetch user data:', error);
+        console.error('Failed to get planner organization context:', error);
       } finally {
-        setAuthLoaded(true);
+        setIsAuthLoaded(true);
       }
     };
     
-    fetchUserOrganization();
-  }, [userOrgId]);
+    initializePlannerContext();
+  }, [userOrgId, planData]);
+
+  // Process and filter objectives to show only planner's organization data
+  useEffect(() => {
+    if (!isAuthLoaded || !plannerOrgId) {
+      console.log('Waiting for auth or planner org ID...', { isAuthLoaded, plannerOrgId });
+      return;
+    }
+
+    console.log('=== PROCESSING PLAN OBJECTIVES FOR PLANNER ORG ===');
+    console.log('Planner Organization ID:', plannerOrgId);
+    console.log('Raw objectives received:', objectives?.length || 0);
+
+    // Use the plan's selected objectives (these should already be filtered)
+    const filteredObjectives = (objectives || []).map(objective => {
+      if (!objective) return objective;
+
+      console.log(`Processing objective: ${objective.title} (ID: ${objective.id})`);
+      
+      // Use the objective weight from the plan (effective_weight, planner_weight, or weight)
+      const objectiveWeight = objective.effective_weight || 
+                             objective.planner_weight || 
+                             objective.weight;
+      
+      console.log(`Objective weight: ${objectiveWeight} (effective: ${objective.effective_weight}, planner: ${objective.planner_weight}, original: ${objective.weight})`);
+
+      // Filter initiatives to ONLY show planner's organization data
+      const plannerInitiatives = (objective.initiatives || []).filter(initiative => {
+        const isDefault = initiative.is_default === true;
+        const belongsToPlanner = Number(initiative.organization) === Number(plannerOrgId);
+        const hasNoOrg = !initiative.organization;
+        
+        // STRICT: Only include if it's default OR belongs to planner's organization
+        const shouldInclude = isDefault || belongsToPlanner || hasNoOrg;
+        
+        console.log(`Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, plannerOrg=${plannerOrgId}, belongsToPlanner=${belongsToPlanner}, shouldInclude=${shouldInclude}`);
+        
+        return shouldInclude;
+      });
+
+      // For each initiative, filter measures and activities by planner organization
+      const processedInitiatives = plannerInitiatives.map(initiative => {
+        // Filter performance measures
+        const plannerMeasures = (initiative.performance_measures || []).filter(measure => {
+          const belongsToPlanner = Number(measure.organization) === Number(plannerOrgId);
+          const hasNoOrg = !measure.organization;
+          const shouldInclude = belongsToPlanner || hasNoOrg;
+          
+          console.log(`Measure "${measure.name}": org=${measure.organization}, plannerOrg=${plannerOrgId}, shouldInclude=${shouldInclude}`);
+          return shouldInclude;
+        });
+
+        // Filter main activities
+        const plannerActivities = (initiative.main_activities || []).filter(activity => {
+          const belongsToPlanner = Number(activity.organization) === Number(plannerOrgId);
+          const hasNoOrg = !activity.organization;
+          const shouldInclude = belongsToPlanner || hasNoOrg;
+          
+          console.log(`Activity "${activity.name}": org=${activity.organization}, plannerOrg=${plannerOrgId}, shouldInclude=${shouldInclude}`);
+          return shouldInclude;
+        });
+
+        return {
+          ...initiative,
+          performance_measures: plannerMeasures,
+          main_activities: plannerActivities
+        };
+      });
+
+      return {
+        ...objective,
+        effective_weight: objectiveWeight,
+        initiatives: processedInitiatives
+      };
+    });
+
+    console.log('Final processed objectives:', filteredObjectives.length);
+    setProcessedObjectives(filteredObjectives);
+  }, [objectives, plannerOrgId, isAuthLoaded]);
+
+  // Fetch organizations for mapping names
+  useEffect(() => {
+    const fetchOrganizations = async () => {
+        return;
+      }
+      
+        const response = await organizations.getAll();
+        const orgMap: Record<string, string> = {};
+        
+        if (response && Array.isArray(response)) {
+          response.forEach((org: any) => {
+            if (org && org.id) {
+              orgMap[org.id] = org.name;
+            }
+          });
+        }
+        
+        setOrganizationsMap(orgMap);
+      } catch (error) {
+        console.error('Failed to fetch organizations:', error);
+      }
+    };
+    
+    fetchOrganizations();
+  }, []);</parameter>
 
   // Helper function to filter data by organization - ONLY show user's organization data
   const filterByUserOrganization = (objectives: any[]) => {
