@@ -434,9 +434,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       let initiativeAdded = false;
 
       allItems.forEach((item, itemIndex) => {
-        // Determine if this item is a performance measure
-        const isPerformanceMeasure = (initiative.performance_measures || []).some(pm => pm.id === item.id);
-        
         // Calculate budget values for main activities
         let budgetRequired = 0;
         let government = 0;
