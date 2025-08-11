@@ -13,13 +13,11 @@ import Cookies from 'js-cookie';
 import axios from 'axios';
 
 const PlanSummary: React.FC = () => {
-  // All hooks must be called unconditionally at the top level
   const { t } = useLanguage();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { planId } = useParams();
 
-  // State hooks
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userOrganizations, setUserOrganizations] = useState<number[]>([]);
@@ -30,11 +28,8 @@ const PlanSummary: React.FC = () => {
   const [retryCount, setRetryCount] = useState(0);
   const [processedPlanData, setProcessedPlanData] = useState<any>(null);
   const [userOrgId, setUserOrgId] = useState<number | null>(null);
-
-  // Add organizations mapping for implementer display
   const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
 
-  // Query hooks
   const { data: organizationsData } = useQuery({
     queryKey: ['organizations'],
     queryFn: async () => {
@@ -134,7 +129,7 @@ const PlanSummary: React.FC = () => {
           setUserRole(authData.userOrganizations[0].role);
           const orgIds = authData.userOrganizations.map(org => org.organization);
           setUserOrganizations(orgIds);
-          setUserOrgId(orgIds[0]); // Set the first organization as primary
+          setUserOrgId(orgIds[0]);
         }
         
         const response = await axios.get('/api/auth/csrf/', { withCredentials: true });
@@ -149,7 +144,6 @@ const PlanSummary: React.FC = () => {
   }, [navigate]);
 
   useEffect(() => {
-    // Create organizations mapping
     if (organizationsData) {
       const orgMap: Record<string, string> = {};
       
@@ -195,14 +189,67 @@ const PlanSummary: React.FC = () => {
     }
   }, [planData, organizationsData]);
 
-  // Helper functions
+  // Helper function to filter plan data by user organization
+  const getFilteredPlanData = () => {
+    if (!processedPlanData?.objectives || !userOrgId) {
+      return processedPlanData;
+    }
+    
+    console.log('Filtering plan data for user organization:', userOrgId);
+    
+    const filteredObjectives = processedPlanData.objectives.map((objective: any) => {
+      if (!objective.initiatives) return objective;
+      
+      // Filter initiatives to only include user's organization or defaults
+      const userInitiatives = objective.initiatives.filter((initiative: any) => {
+        const isDefault = initiative.is_default === true;
+        const belongsToUserOrg = initiative.organization === userOrgId;
+        const shouldInclude = isDefault || belongsToUserOrg;
+        
+        console.log(`Plan view filter - Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, userOrg=${userOrgId}, shouldInclude=${shouldInclude}`);
+        
+        return shouldInclude;
+      });
+      
+      // For each initiative, filter measures and activities
+      const filteredInitiatives = userInitiatives.map((initiative: any) => {
+        const filteredMeasures = (initiative.performance_measures || []).filter((measure: any) => {
+          const belongsToUserOrg = measure.organization === userOrgId;
+          const hasNoOrg = !measure.organization;
+          return belongsToUserOrg || hasNoOrg;
+        });
+        
+        const filteredActivities = (initiative.main_activities || []).filter((activity: any) => {
+          const belongsToUserOrg = activity.organization === userOrgId;
+          const hasNoOrg = !activity.organization;
+          return belongsToUserOrg || hasNoOrg;
+        });
+        
+        return {
+          ...initiative,
+          performance_measures: filteredMeasures,
+          main_activities: filteredActivities
+        };
+      });
+      
+      return {
+        ...objective,
+        initiatives: filteredInitiatives
+      };
+    });
+    
+    return {
+      ...processedPlanData,
+      objectives: filteredObjectives
+    };
+  };
+
   const normalizeAndProcessPlanData = (plan: any) => {
     if (!plan) return plan;
     
     const processedPlan = JSON.parse(JSON.stringify(plan));
     
     try {
-      // Ensure all expected arrays exist and are properly formatted
       if (!Array.isArray(processedPlan.objectives)) {
         processedPlan.objectives = processedPlan.objectives 
           ? (Array.isArray(processedPlan.objectives) ? processedPlan.objectives : [processedPlan.objectives])
@@ -258,61 +305,6 @@ const PlanSummary: React.FC = () => {
     return processedPlan;
   };
 
-  // CRITICAL FIX: Filter plan data to only show planner's organization data
-  const getFilteredPlanData = () => {
-    if (!processedPlanData?.objectives || !userOrgId) {
-      return processedPlanData;
-    }
-    
-    console.log('Filtering plan data for user organization:', userOrgId);
-    
-    const filteredObjectives = processedPlanData.objectives.map((objective: any) => {
-      if (!objective.initiatives) return objective;
-      
-      // Filter initiatives to only include user's organization or defaults
-      const userInitiatives = objective.initiatives.filter((initiative: any) => {
-        const isDefault = initiative.is_default === true;
-        const belongsToUserOrg = initiative.organization === userOrgId;
-        const shouldInclude = isDefault || belongsToUserOrg;
-        
-        console.log(`Plan view filter - Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, userOrg=${userOrgId}, shouldInclude=${shouldInclude}`);
-        
-        return shouldInclude;
-      });
-      
-      // For each initiative, filter measures and activities
-      const filteredInitiatives = userInitiatives.map((initiative: any) => {
-        const filteredMeasures = (initiative.performance_measures || []).filter((measure: any) => {
-          const belongsToUserOrg = measure.organization === userOrgId;
-          const hasNoOrg = !measure.organization;
-          return belongsToUserOrg || hasNoOrg;
-        });
-        
-        const filteredActivities = (initiative.main_activities || []).filter((activity: any) => {
-          const belongsToUserOrg = activity.organization === userOrgId;
-          const hasNoOrg = !activity.organization;
-          return belongsToUserOrg || hasNoOrg;
-        });
-        
-        return {
-          ...initiative,
-          performance_measures: filteredMeasures,
-          main_activities: filteredActivities
-        };
-      });
-      
-      return {
-        ...objective,
-        initiatives: filteredInitiatives
-      };
-    });
-    
-    return {
-      ...processedPlanData,
-      objectives: filteredObjectives
-    };
-  };
-
   const calculateTotalBudget = () => {
     let total = 0;
     let governmentTotal = 0;
@@ -352,7 +344,6 @@ const PlanSummary: React.FC = () => {
 
   const budgetTotals = calculateTotalBudget();
 
-  // Convert plan data to export format (same as PlanReviewTable displays)
   const convertPlanDataToExportFormat = (objectives: any[]) => {
     const exportData: any[] = [];
     
@@ -367,13 +358,12 @@ const PlanSummary: React.FC = () => {
     objectives.forEach((objective, objIndex) => {
       if (!objective) return;
       
-      // Get objective weight directly from database (effective_weight, planner_weight, or weight)
+      // Get objective weight from database (effective_weight, planner_weight, or weight)
       const objectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
       
       let objectiveAdded = false;
       
       if (!objective.initiatives || objective.initiatives.length === 0) {
-        // Objective with no initiatives
         exportData.push({
           No: objIndex + 1,
           'Strategic Objective': objective.title || 'Untitled Objective',
@@ -399,7 +389,6 @@ const PlanSummary: React.FC = () => {
           'Gap': '-'
         });
       } else {
-        // Filter initiatives to only show user's organization data
         const userInitiatives = objective.initiatives.filter((initiative: any) => 
           initiative.is_default || 
           !initiative.organization || 
@@ -411,7 +400,6 @@ const PlanSummary: React.FC = () => {
         userInitiatives.forEach((initiative: any) => {
           if (!initiative) return;
           
-          // Filter performance measures and main activities by organization
           const performanceMeasures = (initiative.performance_measures || []).filter((measure: any) =>
             !measure.organization || measure.organization === userOrgId
           );
@@ -424,7 +412,6 @@ const PlanSummary: React.FC = () => {
           const allItems = [...performanceMeasures, ...mainActivities];
           
           if (allItems.length === 0) {
-            // Initiative with no measures or activities
             exportData.push({
               No: objectiveAdded ? '' : (objIndex + 1).toString(),
               'Strategic Objective': objectiveAdded ? '' : (objective.title || 'Untitled Objective'),
@@ -460,7 +447,6 @@ const PlanSummary: React.FC = () => {
               
               const isPerformanceMeasure = performanceMeasures.includes(item);
               
-              // Calculate budget values (same logic as table)
               let budgetRequired = 0;
               let government = 0;
               let partners = 0;
@@ -482,7 +468,6 @@ const PlanSummary: React.FC = () => {
                 gap = Math.max(0, budgetRequired - totalAvailable);
               }
               
-              // Calculate 6-month target (same logic as table)
               const sixMonthTarget = item.target_type === 'cumulative' 
                 ? Number(item.q1_target || 0) + Number(item.q2_target || 0) 
                 : Number(item.q2_target || 0);
@@ -556,7 +541,6 @@ const PlanSummary: React.FC = () => {
 
   const getPlanTypeDisplay = (type: string) => type || 'N/A';
 
-  // Event handlers
   const handleRetry = async () => {
     setLoadingError(null);
     setRetryCount(prev => prev + 1);
@@ -611,7 +595,6 @@ const PlanSummary: React.FC = () => {
     console.log('Exporting filtered plan data:', filteredPlanData.objectives);
     
     try {
-      // Convert filtered plan data to export format
       const exportData = convertPlanDataToExportFormat(filteredPlanData.objectives);
       
       exportToExcel(
@@ -651,7 +634,6 @@ const PlanSummary: React.FC = () => {
     );
   };
 
-  // Render conditions
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -703,10 +685,8 @@ const PlanSummary: React.FC = () => {
     );
   }
 
-  // Get filtered plan data for display
   const filteredPlanData = getFilteredPlanData();
 
-  // Main render
   return (
     <div className="px-4 py-6 sm:px-0">
       <div className="mb-6">
