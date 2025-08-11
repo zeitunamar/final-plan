@@ -560,7 +560,7 @@ const Planning: React.FC = () => {
   const handleDeleteBudget = async (activityId: string) => {
     try {
       console.log('Deleting budget for activity:', activityId);
-      console.log('Deleting budget for activity:', activityId);
+      await activityBudgets.deleteByActivity(activityId);
       
       // Find the activity and its budget
       let budgetToDelete = null;

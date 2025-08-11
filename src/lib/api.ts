@@ -1313,6 +1313,35 @@ export const activityBudgets = {
       console.error(`Failed to update activity budget ${id}:`, error);
       throw error;
     }
+  },
+  
+  async delete(id: string) {
+    try {
+      const response = await api.delete(`/activity-budgets/${id}/`);
+      return response.data;
+    } catch (error) {
+      console.error(`Failed to delete activity budget ${id}:`, error);
+      throw error;
+    }
+  },
+  
+  async deleteByActivity(activityId: string) {
+    try {
+      // First get the budget for this activity
+      const budgets = await api.get(`/activity-budgets/?activity=${activityId}`);
+      const budgetList = budgets.data?.results || budgets.data || [];
+      
+      if (budgetList.length > 0) {
+        const budget = budgetList[0];
+        const response = await api.delete(`/activity-budgets/${budget.id}/`);
+        return response.data;
+      }
+      
+      throw new Error('No budget found for this activity');
+    } catch (error) {
+      console.error(`Failed to delete budget for activity ${activityId}:`, error);
+      throw error;
+    }
   }
 };
 

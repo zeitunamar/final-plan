@@ -121,25 +121,29 @@ class PlanSerializer(serializers.ModelSerializer):
                 # Get effective weight (custom weight if set, otherwise original weight)
                 effective_weight = custom_weight if custom_weight is not None else objective.weight
                 
-                # Get initiatives for this objective (filtered by organization)
+                # Get initiatives for this objective - ONLY show planner's organization initiatives
+                from django.db import models
                 initiatives = objective.initiatives.filter(
                     models.Q(is_default=True) | 
-                    models.Q(organization=obj.organization) |
-                    models.Q(organization__isnull=True)
+                    models.Q(organization=obj.organization)
+                ).exclude(
+                    models.Q(organization__isnull=False) & ~models.Q(organization=obj.organization)
                 )
                 
                 initiatives_data = []
                 for initiative in initiatives:
-                    # Get performance measures (filtered by organization)
+                    # Get performance measures - ONLY from planner's organization
                     measures = initiative.performance_measures.filter(
-                        models.Q(organization=obj.organization) |
-                        models.Q(organization__isnull=True)
+                        models.Q(organization=obj.organization)
+                    ).exclude(
+                        models.Q(organization__isnull=False) & ~models.Q(organization=obj.organization)
                     )
                     
-                    # Get main activities (filtered by organization)
+                    # Get main activities - ONLY from planner's organization
                     activities = initiative.main_activities.filter(
-                        models.Q(organization=obj.organization) |
-                        models.Q(organization__isnull=True)
+                        models.Q(organization=obj.organization)
+                    ).exclude(
+                        models.Q(organization__isnull=False) & ~models.Q(organization=obj.organization)
                     )
                     
                     initiatives_data.append({
