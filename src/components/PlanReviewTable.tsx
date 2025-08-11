@@ -214,6 +214,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       console.log('PlanReviewTable: Dependencies changed, triggering refresh');
       handleManualRefresh();
     }
+  }, [effectiveUserOrgId]);
 
   // Remove the old data fetching logic and replace with new comprehensive approach
   // Create a query key that includes all initiative IDs to fetch fresh data
@@ -244,6 +245,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       console.log('PlanReviewTable: No objectives data available');
       setProcessedObjectives([]);
     }
+  }, [freshObjectivesData, objectives]);
 
   // Fetch organizations for mapping names
   useEffect(() => {
@@ -370,28 +372,24 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   };
 
   // Show loading if no organization context
-  if (!effectiveUserOrgId || isLoadingMeasures || isLoadingActivities || isRefreshingData) {
+  if (!effectiveUserOrgId || isRefreshingData) {
     return (
       <div className="flex items-center justify-center p-8">
         <Loader className="h-6 w-6 animate-spin mr-2" />
         <span className="text-gray-600">
-          {isRefreshingData ? 'Refreshing plan data...' : 
-           isLoadingMeasures || isLoadingActivities ? 'Loading fresh data...' : 
-           'Loading...'}
+          {isRefreshingData ? 'Refreshing plan data...' : 'Loading...'}
         </span>
       </div>
     );
   }
 
   // Show message if no objectives
-  if (!processedObjectives || !Array.isArray(processedObjectives) || processedObjectives.length === 0) {
+  if (!processedObjectives || processedObjectives.length === 0) {
     return (
       <div className="text-center p-8 bg-gray-50 rounded-lg border border-gray-200">
         <Target className="h-12 w-12 text-gray-400 mx-auto mb-4" />
         <h3 className="text-lg font-medium text-gray-900 mb-2">No Plan Data</h3>
-        <p className="text-gray-500">
-          {isLoadingCompleteData ? 'Loading plan data...' : 'No objectives or plan data available to display.'}
-        </p>
+        <p className="text-gray-500">No objectives or plan data available to display.</p>
       </div>
     );
   }
