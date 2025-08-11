@@ -205,6 +205,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   const [loadingProgress, setLoadingProgress] = useState('');
   const [retryCount, setRetryCount] = useState(0);
   const [currentUserOrgId, setCurrentUserOrgId] = useState<number | null>(null);
+  const [authLoaded, setAuthLoaded] = useState(false);
 
   // Fetch organizations for mapping IDs to names
   useEffect(() => {
@@ -239,23 +240,114 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     const fetchUserOrganization = async () => {
       if (userOrgId) {
         setCurrentUserOrgId(userOrgId);
+        setAuthLoaded(true);
         return;
       }
       
       try {
         const authData = await auth.getCurrentUser();
-        if (authData?.userOrganizations?.length > 0) {
+        if (authData.userOrganizations && authData.userOrganizations.length > 0) {
           const orgId = authData.userOrganizations[0].organization;
           setCurrentUserOrgId(orgId);
-          console.log('PlanReviewTable: Set current user org ID:', orgId);
+          console.log('PlanReviewTable - Current user organization ID:', orgId);
+        } else {
+          console.warn('PlanReviewTable - No user organizations found');
         }
       } catch (error) {
-        console.error('Failed to fetch user organization:', error);
+        console.error('PlanReviewTable - Failed to fetch user data:', error);
+      } finally {
+        setAuthLoaded(true);
       }
     };
     
     fetchUserOrganization();
   }, [userOrgId]);
+
+  // Helper function to filter data by organization - ONLY show user's organization data
+  const filterByUserOrganization = (objectives: any[]) => {
+    if (!authLoaded) {
+      console.log('PlanReviewTable - Auth not loaded yet, showing empty data');
+      return [];
+    }
+
+    if (!Array.isArray(objectives)) {
+      console.log('PlanReviewTable - Invalid objectives data');
+      return [];
+    }
+    
+    // Use the userOrgId prop if available, otherwise use currentUserOrgId
+    const filterOrgId = userOrgId || currentUserOrgId;
+    
+    if (!filterOrgId) {
+      console.log('PlanReviewTable - No organization ID available for filtering');
+      // If no organization ID, show all objectives but filter initiatives
+      return objectives.map(objective => ({
+        ...objective,
+        initiatives: []
+      }));
+    }
+    
+    console.log('PlanReviewTable - Filtering for organization:', filterOrgId);
+    
+    return objectives.map(objective => {
+      if (!objective.initiatives) {
+        return objective;
+      }
+      
+      // Filter initiatives: Show defaults OR user organization initiatives
+      const userInitiatives = objective.initiatives.filter(initiative => {
+        const isDefault = initiative.is_default === true;
+        const belongsToUserOrg = Number(initiative.organization) === Number(filterOrgId);
+        const hasNoOrg = !initiative.organization; // Legacy data
+        
+        const shouldInclude = isDefault || belongsToUserOrg || hasNoOrg;
+        
+        console.log(`PlanReviewTable - Filter initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, filterOrg=${filterOrgId}, belongsToUser=${belongsToUserOrg}, hasNoOrg=${hasNoOrg}, INCLUDE=${shouldInclude}`);
+        
+        return shouldInclude;
+      });
+      
+      // For each initiative, filter measures and activities by organization
+      const filteredInitiatives = userInitiatives.map(initiative => {
+        const filteredMeasures = (initiative.performance_measures || []).filter(measure => {
+          const belongsToUserOrg = !measure.organization || Number(measure.organization) === Number(filterOrgId);
+          
+          console.log(`PlanReviewTable - Filter measure "${measure.name}": org=${measure.organization}, filterOrg=${filterOrgId}, belongsToUser=${belongsToUserOrg}`);
+          return belongsToUserOrg;
+        });
+        
+        const filteredActivities = (initiative.main_activities || []).filter(activity => {
+          const belongsToUserOrg = !activity.organization || Number(activity.organization) === Number(filterOrgId);
+          
+          console.log(`PlanReviewTable - Filter activity "${activity.name}": org=${activity.organization}, filterOrg=${filterOrgId}, belongsToUser=${belongsToUserOrg}`);
+          return belongsToUserOrg;
+        });
+        
+        return {
+          ...initiative,
+          performance_measures: filteredMeasures,
+          main_activities: filteredActivities
+        };
+      });
+      
+      return {
+        ...objective,
+        initiatives: filteredInitiatives
+      };
+    });
+  };
+
+  // Filter objectives data before displaying
+  const filteredObjectives = React.useMemo(() => {
+    console.log('PlanReviewTable - Processing objectives for filtering:', objectives?.length || 0);
+    
+    if (!authLoaded) {
+      console.log('PlanReviewTable - Auth not loaded, returning empty array');
+      return [];
+    }
+    
+    return filterByUserOrganization(objectives || []);
+  }, [objectives, currentUserOrgId, userOrgId, authLoaded]);
 
   // Enhanced data fetching for production
   const fetchCompleteData = async (objectivesList: any[]) => {
@@ -671,19 +763,12 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   const totalAvailable = budgetTotals.governmentTotal + budgetTotals.sdgTotal + budgetTotals.partnersTotal + budgetTotals.otherTotal;
   const fundingGap = Math.max(0, budgetTotals.total - totalAvailable);
 
-  // Loading state
-  if (isLoading) {
+  // Show loading state while fetching user organization or processing data
+  if (isLoading || (!authLoaded && !userOrgId)) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 bg-white rounded-lg border border-gray-200">
-        <Loader className="h-10 w-10 text-blue-600 animate-spin mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Loading Plan Data</h3>
-        <p className="text-gray-600 text-center mb-4">{loadingProgress}</p>
-        <div className="w-full max-w-md bg-gray-200 rounded-full h-2">
-          <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: '50%' }}></div>
-        </div>
-        <p className="text-sm text-gray-500 mt-2">
-          Fetching objectives, initiatives, performance measures, and activities...
-        </p>
+      <div className="flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+        <span className="ml-3 text-gray-600">Loading organization data...</span>
       </div>
     );
   }
@@ -709,7 +794,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   }
 
   // Empty state
-  if (!processedObjectives || processedObjectives.length === 0) {
+  if (!filteredObjectives || filteredObjectives.length === 0) {
     return (
       <div className="p-8 bg-gray-50 rounded-lg border border-gray-200 text-center">
         <Target className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -851,7 +936,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {processedObjectives.map((objective, objIndex) => {
+              {filteredObjectives.map((objective, objIndex) => {
                 let objectiveRowSpan = 0;
                 
                 // Calculate total rows for this objective
