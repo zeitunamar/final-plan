@@ -72,7 +72,10 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   // Process objectives when data changes
   useEffect(() => {
     if (!effectiveUserOrgId || !objectives?.length) {
-      console.log('PlanReviewTable: Missing organization ID or objectives');
+      console.log('PlanReviewTable: Waiting for organization ID or objectives...', { 
+        effectiveUserOrgId, 
+        objectivesLength: objectives?.length 
+      });
       setProcessedObjectives([]);
       return;
     }
@@ -250,6 +253,144 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     );
   }
 
+  // Convert processed objectives to table rows
+  const tableRows: any[] = [];
+  let rowNumber = 1;
+
+  processedObjectives.forEach((objective, objIndex) => {
+    const effectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
+    
+    if (!objective.initiatives || objective.initiatives.length === 0) {
+      // Objective with no initiatives
+      tableRows.push({
+        no: rowNumber++,
+        objective: objective.title,
+        objectiveWeight: `${effectiveWeight.toFixed(1)}%`,
+        initiative: '-',
+        initiativeWeight: '-',
+        itemName: '-',
+        itemType: 'Objective',
+        itemWeight: '-',
+        baseline: '-',
+        q1Target: '-',
+        q2Target: '-',
+        sixMonthTarget: '-',
+        q3Target: '-',
+        q4Target: '-',
+        annualTarget: '-',
+        implementor: organizationName,
+        budgetRequired: 0,
+        government: 0,
+        partners: 0,
+        sdg: 0,
+        other: 0,
+        totalAvailable: 0,
+        gap: 0
+      });
+      return;
+    }
+
+    let objectiveAdded = false;
+    
+    objective.initiatives.forEach((initiative, initIndex) => {
+      const allItems = [
+        ...(initiative.performance_measures || []).map(item => ({ ...item, type: 'Performance Measure' })),
+        ...(initiative.main_activities || []).map(item => ({ ...item, type: 'Main Activity' }))
+      ];
+
+      if (allItems.length === 0) {
+        // Initiative with no items
+        tableRows.push({
+          no: objectiveAdded ? '' : rowNumber++,
+          objective: objectiveAdded ? '' : objective.title,
+          objectiveWeight: objectiveAdded ? '' : `${effectiveWeight.toFixed(1)}%`,
+          initiative: initiative.name,
+          initiativeWeight: `${initiative.weight}%`,
+          itemName: '-',
+          itemType: 'Initiative',
+          itemWeight: '-',
+          baseline: '-',
+          q1Target: '-',
+          q2Target: '-',
+          sixMonthTarget: '-',
+          q3Target: '-',
+          q4Target: '-',
+          annualTarget: '-',
+          implementor: initiative.organization_name || organizationsMap[initiative.organization] || organizationName,
+          budgetRequired: 0,
+          government: 0,
+          partners: 0,
+          sdg: 0,
+          other: 0,
+          totalAvailable: 0,
+          gap: 0
+        });
+        objectiveAdded = true;
+        return;
+      }
+
+      let initiativeAdded = false;
+
+      allItems.forEach((item, itemIndex) => {
+        // Calculate budget values for main activities
+        let budgetRequired = 0;
+        let government = 0;
+        let partners = 0;
+        let sdg = 0;
+        let other = 0;
+        let totalAvailable = 0;
+        let gap = 0;
+
+        if (item.type === 'Main Activity' && item.budget) {
+          budgetRequired = item.budget.budget_calculation_type === 'WITH_TOOL' 
+            ? Number(item.budget.estimated_cost_with_tool || 0)
+            : Number(item.budget.estimated_cost_without_tool || 0);
+          
+          government = Number(item.budget.government_treasury || 0);
+          partners = Number(item.budget.partners_funding || 0);
+          sdg = Number(item.budget.sdg_funding || 0);
+          other = Number(item.budget.other_funding || 0);
+          totalAvailable = government + partners + sdg + other;
+          gap = Math.max(0, budgetRequired - totalAvailable);
+        }
+
+        // Calculate 6-month target
+        const sixMonthTarget = item.target_type === 'cumulative' 
+          ? Number(item.q1_target || 0) + Number(item.q2_target || 0)
+          : Number(item.q2_target || 0);
+
+        tableRows.push({
+          no: objectiveAdded ? '' : (objIndex + 1),
+          objective: objectiveAdded ? '' : objective.title,
+          objectiveWeight: objectiveAdded ? '' : `${effectiveWeight.toFixed(1)}%`,
+          initiative: initiativeAdded ? '' : initiative.name,
+          initiativeWeight: initiativeAdded ? '' : `${initiative.weight}%`,
+          itemName: item.name,
+          itemType: item.type,
+          itemWeight: `${item.weight}%`,
+          baseline: item.baseline || '-',
+          q1Target: item.q1_target || 0,
+          q2Target: item.q2_target || 0,
+          sixMonthTarget: sixMonthTarget,
+          q3Target: item.q3_target || 0,
+          q4Target: item.q4_target || 0,
+          annualTarget: item.annual_target || 0,
+          implementor: initiative.organization_name || organizationsMap[initiative.organization] || organizationName,
+          budgetRequired,
+          government,
+          partners,
+          sdg,
+          other,
+          totalAvailable,
+          gap
+        });
+
+        objectiveAdded = true;
+        initiativeAdded = true;
+      });
+    });
+  });
+
   return (
     <div className="space-y-6">
       {/* Plan Header */}
@@ -280,7 +421,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
       {/* Export Actions */}
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium text-gray-900">Plan Details</h3>
+        <h3 className="text-lg font-medium text-gray-900">Complete Plan Details</h3>
         <div className="flex space-x-2">
           <button
             onClick={handleExportExcel}
@@ -314,191 +455,161 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         </div>
       )}
 
-      {/* Main Table */}
+      {/* Comprehensive Table */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Strategic Objective
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Weight
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Initiative
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Performance Measures
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Main Activities
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Budget
-                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No.</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Strategic Objective</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Obj Weight</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Strategic Initiative</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Init Weight</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Performance Measure/Main Activity</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Weight</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Baseline</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Q1 Target</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Q2 Target</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">6-Month Target</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Q3 Target</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Q4 Target</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Annual Target</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Implementor</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Budget Required</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Government</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Partners</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SDG</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Other</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Available</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gap</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {processedObjectives.map((objective, objIndex) => {
-                const effectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
-                
-                return (
-                  <React.Fragment key={objective.id}>
-                    {/* Objective Row */}
-                    <tr className="bg-blue-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <Target className="h-5 w-5 text-blue-600 mr-2" />
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">{objective.title}</div>
-                            <div className="text-sm text-gray-500">{objective.description}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {effectiveWeight.toFixed(1)}%
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {objective.initiatives?.length || 0} initiatives
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {objective.initiatives?.reduce((total, init) => 
-                          total + (init.performance_measures?.length || 0), 0) || 0} measures
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {objective.initiatives?.reduce((total, init) => 
-                          total + (init.main_activities?.length || 0), 0) || 0} activities
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {formatCurrency(
-                          objective.initiatives?.reduce((total, init) => 
-                            total + (init.main_activities?.reduce((sum, act) => {
-                              if (!act.budget) return sum;
-                              const cost = act.budget.budget_calculation_type === 'WITH_TOOL' 
-                                ? Number(act.budget.estimated_cost_with_tool || 0)
-                                : Number(act.budget.estimated_cost_without_tool || 0);
-                              return sum + cost;
-                            }, 0) || 0), 0) || 0
-                        )}
-                      </td>
-                    </tr>
+              {tableRows.map((row, index) => (
+                <tr key={index} className={`hover:bg-gray-50 ${
+                  row.itemType === 'Performance Measure' ? 'bg-purple-50' : 
+                  row.itemType === 'Main Activity' ? 'bg-green-50' : 
+                  'bg-blue-50'
+                }`}>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{row.no}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
+                    <div className="truncate" title={row.objective}>{row.objective}</div>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
+                    {row.objectiveWeight && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {row.objectiveWeight}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
+                    <div className="truncate" title={row.initiative}>{row.initiative}</div>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
+                    {row.initiativeWeight && row.initiativeWeight !== '-' && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        {row.initiativeWeight}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
+                    <div className="flex items-center">
+                      {row.itemType === 'Performance Measure' && (
+                        <BarChart3 className="h-4 w-4 text-purple-600 mr-2" />
+                      )}
+                      {row.itemType === 'Main Activity' && (
+                        <Activity className="h-4 w-4 text-green-600 mr-2" />
+                      )}
+                      <div className="truncate" title={row.itemName}>{row.itemName}</div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
+                    {row.itemWeight && row.itemWeight !== '-' && (
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        row.itemType === 'Performance Measure' ? 'bg-purple-100 text-purple-800' : 'bg-orange-100 text-orange-800'
+                      }`}>
+                        {row.itemWeight}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.baseline}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-900">{row.q1Target}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-900">{row.q2Target}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center font-medium text-blue-600">{row.sixMonthTarget}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-900">{row.q3Target}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-900">{row.q4Target}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center font-medium text-gray-900">{row.annualTarget}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 max-w-xs">
+                    <div className="truncate" title={row.implementor}>{row.implementor}</div>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-900">
+                    {row.budgetRequired > 0 ? formatCurrency(row.budgetRequired) : '-'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-600">
+                    {row.government > 0 ? formatCurrency(row.government) : '-'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-600">
+                    {row.partners > 0 ? formatCurrency(row.partners) : '-'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-600">
+                    {row.sdg > 0 ? formatCurrency(row.sdg) : '-'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-600">
+                    {row.other > 0 ? formatCurrency(row.other) : '-'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-medium text-blue-600">
+                    {row.totalAvailable > 0 ? formatCurrency(row.totalAvailable) : '-'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-medium">
+                    {row.gap > 0 ? (
+                      <span className="text-red-600">{formatCurrency(row.gap)}</span>
+                    ) : row.budgetRequired > 0 ? (
+                      <span className="text-green-600">Funded</span>
+                    ) : '-'}
+                  </td>
+                </tr>
+              ))}
 
-                    {/* Initiative Rows */}
-                    {objective.initiatives?.map((initiative, initIndex) => (
-                      <React.Fragment key={`${objective.id}-${initiative.id}`}>
-                        <tr className="bg-green-50">
-                          <td className="px-6 py-4 whitespace-nowrap pl-12">
-                            <div className="flex items-center">
-                              <Activity className="h-4 w-4 text-green-600 mr-2" />
-                              <span className="text-sm font-medium text-gray-900">{initiative.name}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              {initiative.weight}%
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-500">
-                            {initiative.organization_name || organizationsMap[initiative.organization] || 'Ministry of Health'}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-500">
-                            {initiative.performance_measures?.length || 0} measures
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-500">
-                            {initiative.main_activities?.length || 0} activities
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-500">
-                            {formatCurrency(
-                              initiative.main_activities?.reduce((sum, act) => {
-                                if (!act.budget) return sum;
-                                const cost = act.budget.budget_calculation_type === 'WITH_TOOL' 
-                                  ? Number(act.budget.estimated_cost_with_tool || 0)
-                                  : Number(act.budget.estimated_cost_without_tool || 0);
-                                return sum + cost;
-                              }, 0) || 0
-                            )}
-                          </td>
-                        </tr>
-
-                        {/* Performance Measures */}
-                        {initiative.performance_measures?.map((measure, measureIndex) => (
-                          <tr key={`${objective.id}-${initiative.id}-measure-${measure.id}`} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 whitespace-nowrap pl-16">
-                              <span className="text-sm text-gray-900">{measure.name}</span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="text-sm text-gray-500">{measure.weight}%</span>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-500">Performance Measure</td>
-                            <td className="px-6 py-4 text-sm text-gray-500">{measure.baseline || '-'}</td>
-                            <td className="px-6 py-4 text-sm text-gray-500">
-                              Q1: {measure.q1_target} | Q2: {measure.q2_target} | Q3: {measure.q3_target} | Q4: {measure.q4_target}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-500">-</td>
-                          </tr>
-                        ))}
-
-                        {/* Main Activities */}
-                        {initiative.main_activities?.map((activity, actIndex) => {
-                          const budgetRequired = activity.budget 
-                            ? (activity.budget.budget_calculation_type === 'WITH_TOOL' 
-                                ? Number(activity.budget.estimated_cost_with_tool || 0)
-                                : Number(activity.budget.estimated_cost_without_tool || 0))
-                            : 0;
-
-                          const government = Number(activity.budget?.government_treasury || 0);
-                          const partners = Number(activity.budget?.partners_funding || 0);
-                          const sdg = Number(activity.budget?.sdg_funding || 0);
-                          const other = Number(activity.budget?.other_funding || 0);
-                          const totalAvailable = government + partners + sdg + other;
-                          const gap = Math.max(0, budgetRequired - totalAvailable);
-
-                          return (
-                            <tr key={`${objective.id}-${initiative.id}-activity-${activity.id}`} className="hover:bg-gray-50">
-                              <td className="px-6 py-4 whitespace-nowrap pl-16">
-                                <span className="text-sm text-gray-900">{activity.name}</span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className="text-sm text-gray-500">{activity.weight}%</span>
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-500">Main Activity</td>
-                              <td className="px-6 py-4 text-sm text-gray-500">{activity.baseline || '-'}</td>
-                              <td className="px-6 py-4 text-sm text-gray-500">
-                                Q1: {activity.q1_target} | Q2: {activity.q2_target} | Q3: {activity.q3_target} | Q4: {activity.q4_target}
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-900">
-                                {activity.budget ? (
-                                  <div className="space-y-1">
-                                    <div className="font-medium">{formatCurrency(budgetRequired)}</div>
-                                    <div className="text-xs text-gray-500">
-                                      Gov: {formatCurrency(government)} | Partners: {formatCurrency(partners)}
-                                    </div>
-                                    {gap > 0 && (
-                                      <div className="text-xs text-red-600">Gap: {formatCurrency(gap)}</div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-400">No budget</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </React.Fragment>
-                    ))}
-                  </React.Fragment>
-                );
-              })}
+              {/* Summary Row */}
+              {totals.totalRequired > 0 && (
+                <tr className="bg-blue-100 border-t-2 border-blue-300">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-900" colSpan={15}>
+                    TOTAL BUDGET SUMMARY
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold text-gray-900">
+                    {formatCurrency(totals.totalRequired)}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold text-blue-600">
+                    {formatCurrency(totals.totalGovernment)}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold text-purple-600">
+                    {formatCurrency(totals.totalPartners)}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold text-green-600">
+                    {formatCurrency(totals.totalSDG)}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold text-orange-600">
+                    {formatCurrency(totals.totalOther)}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold text-blue-600">
+                    {formatCurrency(totals.totalAvailable)}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold">
+                    {totals.totalGap > 0 ? (
+                      <span className="text-red-600">{formatCurrency(totals.totalGap)}</span>
+                    ) : (
+                      <span className="text-green-600">Fully Funded</span>
+                    )}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Budget Summary */}
+      {/* Budget Summary Cards */}
       {totals.totalRequired > 0 && (
         <div className="bg-white p-6 rounded-lg border border-gray-200">
           <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
