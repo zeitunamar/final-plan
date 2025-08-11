@@ -13,11 +13,13 @@ import Cookies from 'js-cookie';
 import axios from 'axios';
 
 const PlanSummary: React.FC = () => {
+  // All hooks must be called unconditionally at the top level
   const { t } = useLanguage();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { planId } = useParams();
 
+  // State hooks
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userOrganizations, setUserOrganizations] = useState<number[]>([]);
@@ -27,9 +29,11 @@ const PlanSummary: React.FC = () => {
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [processedPlanData, setProcessedPlanData] = useState<any>(null);
-  const [userOrgId, setUserOrgId] = useState<number | null>(null);
+
+  // Add organizations mapping for implementer display
   const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
 
+  // Query hooks
   const { data: organizationsData } = useQuery({
     queryKey: ['organizations'],
     queryFn: async () => {
@@ -127,9 +131,7 @@ const PlanSummary: React.FC = () => {
         
         if (authData.userOrganizations?.length > 0) {
           setUserRole(authData.userOrganizations[0].role);
-          const orgIds = authData.userOrganizations.map(org => org.organization);
-          setUserOrganizations(orgIds);
-          setUserOrgId(orgIds[0]);
+          setUserOrganizations(authData.userOrganizations.map(org => org.organization));
         }
         
         const response = await axios.get('/api/auth/csrf/', { withCredentials: true });
@@ -144,6 +146,7 @@ const PlanSummary: React.FC = () => {
   }, [navigate]);
 
   useEffect(() => {
+    // Create organizations mapping
     if (organizationsData) {
       const orgMap: Record<string, string> = {};
       
@@ -189,67 +192,14 @@ const PlanSummary: React.FC = () => {
     }
   }, [planData, organizationsData]);
 
-  // Helper function to filter plan data by user organization
-  const getFilteredPlanData = () => {
-    if (!processedPlanData?.objectives || !userOrgId) {
-      return processedPlanData;
-    }
-    
-    console.log('Filtering plan data for user organization:', userOrgId);
-    
-    const filteredObjectives = processedPlanData.objectives.map((objective: any) => {
-      if (!objective.initiatives) return objective;
-      
-      // Filter initiatives to only include user's organization or defaults
-      const userInitiatives = objective.initiatives.filter((initiative: any) => {
-        const isDefault = initiative.is_default === true;
-        const belongsToUserOrg = initiative.organization === userOrgId;
-        const shouldInclude = isDefault || belongsToUserOrg;
-        
-        console.log(`Plan view filter - Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, userOrg=${userOrgId}, shouldInclude=${shouldInclude}`);
-        
-        return shouldInclude;
-      });
-      
-      // For each initiative, filter measures and activities
-      const filteredInitiatives = userInitiatives.map((initiative: any) => {
-        const filteredMeasures = (initiative.performance_measures || []).filter((measure: any) => {
-          const belongsToUserOrg = measure.organization === userOrgId;
-          const hasNoOrg = !measure.organization;
-          return belongsToUserOrg || hasNoOrg;
-        });
-        
-        const filteredActivities = (initiative.main_activities || []).filter((activity: any) => {
-          const belongsToUserOrg = activity.organization === userOrgId;
-          const hasNoOrg = !activity.organization;
-          return belongsToUserOrg || hasNoOrg;
-        });
-        
-        return {
-          ...initiative,
-          performance_measures: filteredMeasures,
-          main_activities: filteredActivities
-        };
-      });
-      
-      return {
-        ...objective,
-        initiatives: filteredInitiatives
-      };
-    });
-    
-    return {
-      ...processedPlanData,
-      objectives: filteredObjectives
-    };
-  };
-
+  // Helper functions
   const normalizeAndProcessPlanData = (plan: any) => {
     if (!plan) return plan;
     
     const processedPlan = JSON.parse(JSON.stringify(plan));
     
     try {
+      // Ensure all expected arrays exist and are properly formatted
       if (!Array.isArray(processedPlan.objectives)) {
         processedPlan.objectives = processedPlan.objectives 
           ? (Array.isArray(processedPlan.objectives) ? processedPlan.objectives : [processedPlan.objectives])
@@ -312,13 +262,12 @@ const PlanSummary: React.FC = () => {
     let partnersTotal = 0;
     let otherTotal = 0;
 
-    const filteredData = getFilteredPlanData();
-    if (!filteredData?.objectives) {
+    if (!processedPlanData?.objectives) {
       return { total, governmentTotal, sdgTotal, partnersTotal, otherTotal };
     }
 
     try {
-      filteredData.objectives.forEach((objective: any) => {
+      processedPlanData.objectives.forEach((objective: any) => {
         objective?.initiatives?.forEach((initiative: any) => {
           initiative?.main_activities?.forEach((activity: any) => {
             if (!activity?.budget) return;
@@ -344,6 +293,7 @@ const PlanSummary: React.FC = () => {
 
   const budgetTotals = calculateTotalBudget();
 
+  // Convert plan data to export format (same as PlanReviewTable displays)
   const convertPlanDataToExportFormat = (objectives: any[]) => {
     const exportData: any[] = [];
     
@@ -352,21 +302,24 @@ const PlanSummary: React.FC = () => {
       return exportData;
     }
 
+    const userOrgId = userOrganizations?.[0] || null;
     console.log('Converting plan data for export - user org:', userOrgId);
     console.log('Objectives to convert:', objectives.length);
 
     objectives.forEach((objective, objIndex) => {
       if (!objective) return;
       
-      // Get objective weight from database (effective_weight, planner_weight, or weight)
+      // Get objective weight directly from database (effective_weight, planner_weight, or weight)
       const objectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
       
       let objectiveAdded = false;
       
       if (!objective.initiatives || objective.initiatives.length === 0) {
+        // Objective with no initiatives
         exportData.push({
           No: objIndex + 1,
           'Strategic Objective': objective.title || 'Untitled Objective',
+          'Strategic Objective Weight': `${calculatedWeight.toFixed(1)}%`,
           'Strategic Objective Weight': `${objectiveWeight.toFixed(1)}%`,
           'Strategic Initiative': '-',
           'Initiative Weight': '-',
@@ -389,7 +342,8 @@ const PlanSummary: React.FC = () => {
           'Gap': '-'
         });
       } else {
-        const userInitiatives = objective.initiatives.filter((initiative: any) => 
+        // Filter initiatives to only show user's organization data
+        const userInitiatives = objective.initiatives.filter(initiative => 
           initiative.is_default || 
           !initiative.organization || 
           initiative.organization === userOrgId
@@ -400,10 +354,11 @@ const PlanSummary: React.FC = () => {
         userInitiatives.forEach((initiative: any) => {
           if (!initiative) return;
           
-          const performanceMeasures = (initiative.performance_measures || []).filter((measure: any) =>
+          // Filter performance measures and main activities by organization
+          const performanceMeasures = (initiative.performance_measures || []).filter(measure =>
             !measure.organization || measure.organization === userOrgId
           );
-          const mainActivities = (initiative.main_activities || []).filter((activity: any) =>
+          const mainActivities = (initiative.main_activities || []).filter(activity =>
             !activity.organization || activity.organization === userOrgId
           );
           
@@ -412,6 +367,7 @@ const PlanSummary: React.FC = () => {
           const allItems = [...performanceMeasures, ...mainActivities];
           
           if (allItems.length === 0) {
+            // Initiative with no measures or activities
             exportData.push({
               No: objectiveAdded ? '' : (objIndex + 1).toString(),
               'Strategic Objective': objectiveAdded ? '' : (objective.title || 'Untitled Objective'),
@@ -447,6 +403,7 @@ const PlanSummary: React.FC = () => {
               
               const isPerformanceMeasure = performanceMeasures.includes(item);
               
+              // Calculate budget values (same logic as table)
               let budgetRequired = 0;
               let government = 0;
               let partners = 0;
@@ -468,6 +425,7 @@ const PlanSummary: React.FC = () => {
                 gap = Math.max(0, budgetRequired - totalAvailable);
               }
               
+              // Calculate 6-month target (same logic as table)
               const sixMonthTarget = item.target_type === 'cumulative' 
                 ? Number(item.q1_target || 0) + Number(item.q2_target || 0) 
                 : Number(item.q2_target || 0);
@@ -541,6 +499,7 @@ const PlanSummary: React.FC = () => {
 
   const getPlanTypeDisplay = (type: string) => type || 'N/A';
 
+  // Event handlers
   const handleRetry = async () => {
     setLoadingError(null);
     setRetryCount(prev => prev + 1);
@@ -586,16 +545,60 @@ const PlanSummary: React.FC = () => {
   };
 
   const handleExportExcel = () => {
-    const filteredPlanData = getFilteredPlanData();
-    if (!filteredPlanData?.objectives) {
+    if (!processedPlanData?.objectives) {
       console.error('No objectives data available for export');
       return;
     }
     
-    console.log('Exporting filtered plan data:', filteredPlanData.objectives);
+    console.log('Exporting plan data:', processedPlanData.objectives);
     
     try {
-      const exportData = convertPlanDataToExportFormat(filteredPlanData.objectives);
+      // CRITICAL FIX: Filter objectives data before conversion to ensure only user org data
+      const filteredObjectivesForExport = processedPlanData.objectives?.map(objective => {
+        if (!objective.initiatives) return objective;
+        
+        // Filter initiatives to only include user's organization or defaults
+        const userInitiatives = objective.initiatives.filter(initiative => {
+          const isDefault = initiative.is_default === true;
+          const belongsToUserOrg = initiative.organization === userOrganizations[0];
+          const shouldInclude = isDefault || belongsToUserOrg;
+          
+          console.log(`Export filter - Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, userOrg=${userOrganizations[0]}, shouldInclude=${shouldInclude}`);
+          
+          return shouldInclude;
+        });
+        
+        // For each initiative, filter measures and activities
+        const filteredInitiatives = userInitiatives.map(initiative => {
+          const filteredMeasures = (initiative.performance_measures || []).filter(measure => {
+            const belongsToUserOrg = measure.organization === userOrganizations[0];
+            const hasNoOrg = !measure.organization;
+            return belongsToUserOrg || hasNoOrg;
+          });
+          
+          const filteredActivities = (initiative.main_activities || []).filter(activity => {
+            const belongsToUserOrg = activity.organization === userOrganizations[0];
+            const hasNoOrg = !activity.organization;
+            return belongsToUserOrg || hasNoOrg;
+          });
+          
+          return {
+            ...initiative,
+            performance_measures: filteredMeasures,
+            main_activities: filteredActivities
+          };
+        });
+        
+        return {
+          ...objective,
+          initiatives: filteredInitiatives
+        };
+      }) || [];
+      
+      console.log('Filtered objectives for export:', filteredObjectivesForExport.length);
+      
+      // Convert filtered plan data to export format
+      const exportData = convertPlanDataToExportFormat(filteredObjectivesForExport);
       
       exportToExcel(
         exportData,
@@ -603,10 +606,10 @@ const PlanSummary: React.FC = () => {
         'en',
         {
           organization: organizationName,
-          planner: filteredPlanData.planner_name || 'N/A',
-          fromDate: filteredPlanData.from_date || 'N/A',
-          toDate: filteredPlanData.to_date || 'N/A',
-          planType: filteredPlanData.type || 'N/A'
+          planner: processedPlanData.planner_name || 'N/A',
+          fromDate: processedPlanData.from_date || 'N/A',
+          toDate: processedPlanData.to_date || 'N/A',
+          planType: processedPlanData.type || 'N/A'
         }
       );
     } catch (error) {
@@ -615,10 +618,43 @@ const PlanSummary: React.FC = () => {
   };
 
   const handleExportPDF = () => {
-    const filteredPlanData = getFilteredPlanData();
-    if (!filteredPlanData?.objectives) return;
+    if (!processedPlanData?.objectives) return;
     
-    const exportData = convertPlanDataToExportFormat(filteredPlanData.objectives);
+    // CRITICAL FIX: Filter objectives data before PDF export to ensure only user org data
+    const filteredObjectivesForPDF = processedPlanData.objectives?.map(objective => {
+      if (!objective.initiatives) return objective;
+      
+      // Filter initiatives to only include user's organization or defaults
+      const userInitiatives = objective.initiatives.filter(initiative => {
+        const isDefault = initiative.is_default === true;
+        const belongsToUserOrg = initiative.organization === userOrganizations[0];
+        return isDefault || belongsToUserOrg;
+      });
+      
+      // For each initiative, filter measures and activities
+      const filteredInitiatives = userInitiatives.map(initiative => {
+        const filteredMeasures = (initiative.performance_measures || []).filter(measure => {
+          return measure.organization === userOrganizations[0] || !measure.organization;
+        });
+        
+        const filteredActivities = (initiative.main_activities || []).filter(activity => {
+          return activity.organization === userOrganizations[0] || !activity.organization;
+        });
+        
+        return {
+          ...initiative,
+          performance_measures: filteredMeasures,
+          main_activities: filteredActivities
+        };
+      });
+      
+      return {
+        ...objective,
+        initiatives: filteredInitiatives
+      };
+    }) || [];
+    
+    const exportData = convertPlanDataToExportFormat(filteredObjectivesForPDF);
     
     exportToPDF(
       exportData,
@@ -626,14 +662,15 @@ const PlanSummary: React.FC = () => {
       'en',
       {
         organization: organizationName,
-        planner: filteredPlanData.planner_name || 'N/A',
-        fromDate: filteredPlanData.from_date || 'N/A',
-        toDate: filteredPlanData.to_date || 'N/A',
-        planType: filteredPlanData.type || 'N/A'
+        planner: processedPlanData.planner_name || 'N/A',
+        fromDate: processedPlanData.from_date || 'N/A',
+        toDate: processedPlanData.to_date || 'N/A',
+        planType: processedPlanData.type || 'N/A'
       }
     );
   };
 
+  // Render conditions
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -685,8 +722,65 @@ const PlanSummary: React.FC = () => {
     );
   }
 
+  // CRITICAL FIX: Filter plan data before displaying to ensure only user org data is shown
+  const getFilteredPlanData = () => {
+    if (!processedPlanData?.objectives || !userOrganizations?.length) {
+      return processedPlanData;
+    }
+    
+    const userOrgId = userOrganizations[0];
+    console.log('Filtering plan data for user organization:', userOrgId);
+    
+    const filteredObjectives = processedPlanData.objectives.map(objective => {
+      if (!objective.initiatives) return objective;
+      
+      // Filter initiatives to only include user's organization or defaults
+      const userInitiatives = objective.initiatives.filter(initiative => {
+        const isDefault = initiative.is_default === true;
+        const belongsToUserOrg = initiative.organization === userOrgId;
+        const shouldInclude = isDefault || belongsToUserOrg;
+        
+        console.log(`Plan view filter - Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, userOrg=${userOrgId}, shouldInclude=${shouldInclude}`);
+        
+        return shouldInclude;
+      });
+      
+      // For each initiative, filter measures and activities
+      const filteredInitiatives = userInitiatives.map(initiative => {
+        const filteredMeasures = (initiative.performance_measures || []).filter(measure => {
+          const belongsToUserOrg = measure.organization === userOrgId;
+          const hasNoOrg = !measure.organization;
+          return belongsToUserOrg || hasNoOrg;
+        });
+        
+        const filteredActivities = (initiative.main_activities || []).filter(activity => {
+          const belongsToUserOrg = activity.organization === userOrgId;
+          const hasNoOrg = !activity.organization;
+          return belongsToUserOrg || hasNoOrg;
+        });
+        
+        return {
+          ...initiative,
+          performance_measures: filteredMeasures,
+          main_activities: filteredActivities
+        };
+      });
+      
+      return {
+        ...objective,
+        initiatives: filteredInitiatives
+      };
+    });
+    
+    return {
+      ...processedPlanData,
+      objectives: filteredObjectives
+    };
+  };
+  
+  // Get filtered plan data for display
   const filteredPlanData = getFilteredPlanData();
-
+  // Main render
   return (
     <div className="px-4 py-6 sm:px-0">
       <div className="mb-6">
@@ -713,7 +807,7 @@ const PlanSummary: React.FC = () => {
                 {filteredPlanData.status}
               </div>
               {filteredPlanData.submitted_at && (
-                <span className="ml-2 text-sm text-gray-500">
+                    {objectiveWeight.toFixed(1)}%
                   Submitted on {formatDate(filteredPlanData.submitted_at)}
                 </span>
               )}
@@ -771,7 +865,7 @@ const PlanSummary: React.FC = () => {
                   toDate={filteredPlanData.to_date || ''}
                   planType={filteredPlanData.type || 'N/A'}
                   isPreviewMode={true}
-                  userOrgId={userOrgId}
+                  userOrgId={userOrganizations[0] || null}
                   isViewOnly={true}
                 />
               </div>
@@ -819,21 +913,21 @@ const PlanSummary: React.FC = () => {
           {filteredPlanData.reviews?.length > 0 && (
             <div className="border-b border-gray-200 pb-6">
               <h2 className="text-lg font-medium text-gray-900 mb-4">Evaluator Feedback</h2>
-              <div className={`p-4 rounded-lg ${
+                      {objectiveWeight.toFixed(1)}%
                 filteredPlanData.status === 'APPROVED' ? 'bg-green-50 border border-green-200' : 
                 filteredPlanData.status === 'REJECTED' ? 'bg-red-50 border border-red-200' : 
                 'bg-gray-50 border border-gray-200'
               }`}>
                 <div className="flex items-start">
                   {filteredPlanData.status === 'APPROVED' ? (
-                    <CheckCircle className="h-5 w-5 mr-2 text-green-500 mt-0.5" />
+                    <CheckCircle className={\`h-5 w-5 mr-2 text-green-500 mt-0.5`} />
                   ) : filteredPlanData.status === 'REJECTED' ? (
-                    <XCircle className="h-5 w-5 mr-2 text-red-500 mt-0.5" />
+                    <XCircle className={\`h-5 w-5 mr-2 text-red-500 mt-0.5`} />
                   ) : (
                     <div className="h-5 w-5 mr-2" />
                   )}
                   <div>
-                    <p className={`font-medium ${
+                    <p className={\`font-medium ${
                       filteredPlanData.status === 'APPROVED' ? 'text-green-700' : 
                       filteredPlanData.status === 'REJECTED' ? 'text-red-700' : 
                       'text-gray-700'
