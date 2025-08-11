@@ -259,9 +259,12 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         
         console.log(`Found ${objectiveInitiatives.length} initiatives for objective ${objective.id}`);
 
-        // Filter initiatives based on user organization
-        // ADMIN MODE: No organization filtering - show ALL initiatives
-        const filteredInitiatives = objectiveInitiatives;
+        // Filter initiatives based on user organization - CRITICAL FIX
+        const filteredInitiatives = objectiveInitiatives.filter(initiative => 
+          initiative.is_default || 
+          !initiative.organization || 
+          initiative.organization === userOrgId
+        );
 
         console.log(`Filtered to ${filteredInitiatives.length} initiatives for user org ${userOrgId}`);
 
@@ -286,9 +289,13 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
             const measures = performanceMeasuresData.status === 'fulfilled' ? performanceMeasuresData.value : [];
             const activities = mainActivitiesData.status === 'fulfilled' ? mainActivitiesData.value : [];
 
-            // ADMIN MODE: No organization filtering - show ALL measures and activities
-            const filteredMeasures = measures;
-            const filteredActivities = activities;
+            // Filter measures and activities by organization - CRITICAL FIX
+            const filteredMeasures = measures.filter(measure =>
+              !measure.organization || measure.organization === userOrgId
+            );
+            const filteredActivities = activities.filter(activity =>
+              !activity.organization || activity.organization === userOrgId
+            );
 
             console.log(`Initiative ${initiative.id}: ${filteredMeasures.length} measures, ${filteredActivities.length} activities`);
 

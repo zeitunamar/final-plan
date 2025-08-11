@@ -112,17 +112,45 @@ const PlanSummary: React.FC = () => {
       setShowReviewForm(false);
       navigate('/evaluator');
     },
+        console.log('User organization for filtering:', userOrgId);
     onError: (error: any) => {
       setLoadingError(error.message || 'Failed to submit review');
-    }
-  });
-
-  // Effect hooks
-  useEffect(() => {
-    const ensureAuth = async () => {
-      try {
+          // Filter objectives data to only show user's organization data
+          const filteredObjectives = objectives.map(obj => {
+            if (!obj) return obj;
+            
+            // Filter initiatives to only show user's organization data
+            const filteredInitiatives = (obj.initiatives || []).filter(initiative => 
+              initiative.is_default || 
+              !initiative.organization || 
+              initiative.organization === userOrgId
+            ).map(initiative => ({
+              ...initiative,
+              // Filter performance measures by organization
+              performance_measures: (initiative.performance_measures || []).filter(measure =>
+                !measure.organization || measure.organization === userOrgId
+              ),
+              // Filter main activities by organization
+              main_activities: (initiative.main_activities || []).filter(activity =>
+                !activity.organization || activity.organization === userOrgId
+              )
+            }));
+            
+            return {
+              ...obj,
+              initiatives: filteredInitiatives
+            };
+          });
+          
+          // Log the filtered structure
+          filteredObjectives.forEach((obj, index) => {
+            const initiativesCount = obj.initiatives?.length || 0;
+            const measuresCount = obj.initiatives?.reduce((sum, init) => sum + (init.performance_measures?.length || 0), 0) || 0;
+            const activitiesCount = obj.initiatives?.reduce((sum, init) => sum + (init.main_activities?.length || 0), 0) || 0;
+            console.log(`Filtered Table Objective ${index + 1}: ${obj.title} - ${initiativesCount} initiatives, ${measuresCount} measures, ${activitiesCount} activities (User Org: ${userOrgId})`);
+          });
         const authData = await auth.getCurrentUser();
-        if (!authData.isAuthenticated) {
+          setProcessedObjectives(filteredObjectives);
           navigate('/login');
           return;
         }
@@ -302,6 +330,9 @@ const PlanSummary: React.FC = () => {
       return exportData;
     }
 
+    console.log('Converting plan data for export - user org:', userOrgId);
+    console.log('Objectives to convert:', objectives.length);
+
     objectives.forEach((objective, objIndex) => {
       if (!objective) return;
       
@@ -339,11 +370,28 @@ const PlanSummary: React.FC = () => {
           'Gap': '-'
         });
       } else {
-        objective.initiatives.forEach((initiative: any) => {
+        // Filter initiatives to only show user's organization data
+        const userInitiatives = objective.initiatives.filter(initiative => 
+          initiative.is_default || 
+          !initiative.organization || 
+          initiative.organization === userOrgId
+        );
+        
+        console.log(`Objective ${objective.title}: ${objective.initiatives.length} total initiatives, ${userInitiatives.length} for user org`);
+        
+        userInitiatives.forEach((initiative: any) => {
           if (!initiative) return;
           
-          const performanceMeasures = initiative.performance_measures || [];
-          const mainActivities = initiative.main_activities || [];
+          // Filter performance measures and main activities by organization
+          const performanceMeasures = (initiative.performance_measures || []).filter(measure =>
+            !measure.organization || measure.organization === userOrgId
+          );
+          const mainActivities = (initiative.main_activities || []).filter(activity =>
+            !activity.organization || activity.organization === userOrgId
+          );
+          
+          console.log(`Initiative ${initiative.name}: ${performanceMeasures.length} measures, ${mainActivities.length} activities for user org`);
+          
           const allItems = [...performanceMeasures, ...mainActivities];
           
           if (allItems.length === 0) {
