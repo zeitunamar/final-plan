@@ -2,35 +2,67 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { 
+  Target, 
+  Plus, 
+  Edit, 
+  Trash2, 
+  Save, 
+  Loader, 
+  AlertCircle, 
+  CheckCircle, 
   ArrowLeft, 
   ArrowRight, 
-  CheckCircle, 
-  AlertCircle, 
-  Target, 
-  Activity, 
-  BarChart3, 
-  DollarSign, 
   Eye, 
+  Send,
+  Calculator,
+  DollarSign,
+  Activity,
+  BarChart3,
   FileSpreadsheet,
-  Loader,
-  RefreshCw,
-  Info,
-  Calendar,
-  User,
   Building2,
-  FileType
+  User,
+  Calendar,
+  FileType,
+  Info,
+  RefreshCw,
+  Clock,
+  XCircle
 } from 'lucide-react';
 import { useLanguage } from '../lib/i18n/LanguageContext';
-import { auth, organizations, objectives, initiatives, performanceMeasures, mainActivities, plans } from '../lib/api';
-import { isPlanner } from '../types/user';
-import type { StrategicObjective, Organization } from '../types/organization';
-import type { PlanType, ActivityType, BudgetCalculationType } from '../types/plan';
+import { 
+  organizations, 
+  objectives, 
+  programs, 
+  initiatives, 
+  performanceMeasures, 
+  mainActivities, 
+  plans, 
+  auth,
+  activityBudgets,
+  api
+} from '../lib/api';
+import type { 
+  Organization, 
+  StrategicObjective, 
+  Program, 
+  StrategicInitiative 
+} from '../types/organization';
+import type { 
+  Plan, 
+  PlanType, 
+  MainActivity, 
+  PerformanceMeasure, 
+  ActivityBudget, 
+  BudgetCalculationType, 
+  ActivityType 
+} from '../types/plan';
+import { isPlanner, isAdmin } from '../types/user';
+import { format } from 'date-fns';
 
-// Import components
+// Component imports
 import PlanTypeSelector from '../components/PlanTypeSelector';
 import ObjectiveSelectionMode from '../components/ObjectiveSelectionMode';
 import HorizontalObjectiveSelector from '../components/HorizontalObjectiveSelector';
-import CustomObjectiveSelector from '../components/CustomObjectiveSelector';
 import StrategicObjectivesList from '../components/StrategicObjectivesList';
 import InitiativeList from '../components/InitiativeList';
 import InitiativeForm from '../components/InitiativeForm';
@@ -40,41 +72,57 @@ import MainActivityList from '../components/MainActivityList';
 import MainActivityForm from '../components/MainActivityForm';
 import ActivityBudgetForm from '../components/ActivityBudgetForm';
 import ActivityBudgetDetails from '../components/ActivityBudgetDetails';
+import ActivityBudgetSummary from '../components/ActivityBudgetSummary';
 import PlanReviewTable from '../components/PlanReviewTable';
+import PlanSubmitForm from '../components/PlanSubmitForm';
 import PlanPreviewModal from '../components/PlanPreviewModal';
+import PlanningHeader from '../components/PlanningHeader';
+
+// Costing tool imports
 import TrainingCostingTool from '../components/TrainingCostingTool';
 import MeetingWorkshopCostingTool from '../components/MeetingWorkshopCostingTool';
+import SupervisionCostingTool from '../components/SupervisionCostingTool';
 import PrintingCostingTool from '../components/PrintingCostingTool';
 import ProcurementCostingTool from '../components/ProcurementCostingTool';
-import SupervisionCostingTool from '../components/SupervisionCostingTool';
+
+type PlanningStep = 
+  | 'plan-type' 
+  | 'objective-selection' 
+  | 'planning' 
+  | 'review' 
+  | 'submit';
 
 // Success Modal Component
-const SuccessModal: React.FC<{
+interface SuccessModalProps {
   isOpen: boolean;
   onClose: () => void;
   onViewPlans: () => void;
-}> = ({ isOpen, onClose, onViewPlans }) => {
+}
+
+const SuccessModal: React.FC<SuccessModalProps> = ({ isOpen, onClose, onViewPlans }) => {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg p-6 max-w-md w-full">
         <div className="text-center">
-          <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
+            <CheckCircle className="h-6 w-6 text-green-600" />
+          </div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">Plan Submitted Successfully!</h3>
-          <p className="text-gray-600 mb-6">
-            Your plan has been submitted for review. You can track its status in your submitted plans.
+          <p className="text-sm text-gray-500 mb-6">
+            Your plan has been submitted for review. You can track its status in your plans dashboard.
           </p>
           <div className="flex space-x-3">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               Close
             </button>
             <button
               onClick={onViewPlans}
-              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700"
             >
               View My Plans
             </button>
@@ -86,38 +134,55 @@ const SuccessModal: React.FC<{
 };
 
 // Plan Status Modal Component
-const PlanStatusModal: React.FC<{
+interface PlanStatusModalProps {
   isOpen: boolean;
   onClose: () => void;
   onViewPlans: () => void;
-  planStatus: string;
+  planStatus: 'SUBMITTED' | 'APPROVED' | 'REJECTED' | null;
   message: string;
-}> = ({ isOpen, onClose, onViewPlans, planStatus, message }) => {
+}
+
+const PlanStatusModal: React.FC<PlanStatusModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  onViewPlans, 
+  planStatus, 
+  message 
+}) => {
   if (!isOpen) return null;
 
-  const getStatusIcon = () => {
+  const getIcon = () => {
     switch (planStatus) {
       case 'SUBMITTED':
-        return <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />;
+        return <Clock className="h-6 w-6 text-yellow-600" />;
       case 'APPROVED':
-        return <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />;
+        return <CheckCircle className="h-6 w-6 text-green-600" />;
       case 'REJECTED':
-        return <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />;
+        return <XCircle className="h-6 w-6 text-red-600" />;
       default:
-        return <Info className="h-12 w-12 text-blue-500 mx-auto mb-4" />;
+        return <AlertCircle className="h-6 w-6 text-blue-600" />;
     }
   };
 
-  const getStatusColor = () => {
+  const getTitle = () => {
     switch (planStatus) {
       case 'SUBMITTED':
-        return 'text-yellow-800';
+        return 'Plan Already Submitted';
       case 'APPROVED':
-        return 'text-green-800';
+        return 'Plan Already Approved';
       case 'REJECTED':
-        return 'text-red-800';
+        return 'Plan Was Rejected';
       default:
-        return 'text-blue-800';
+        return 'Plan Status';
+    }
+  };
+
+  const getButtonText = () => {
+    switch (planStatus) {
+      case 'REJECTED':
+        return 'Create New Plan';
+      default:
+        return 'View My Plans';
     }
   };
 
@@ -125,23 +190,27 @@ const PlanStatusModal: React.FC<{
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg p-6 max-w-md w-full">
         <div className="text-center">
-          {getStatusIcon()}
-          <h3 className={`text-lg font-medium mb-2 ${getStatusColor()}`}>
-            Plan Status: {planStatus}
-          </h3>
-          <p className="text-gray-600 mb-6">{message}</p>
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-gray-100 mb-4">
+            {getIcon()}
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{getTitle()}</h3>
+          <p className="text-sm text-gray-500 mb-6">{message}</p>
           <div className="flex space-x-3">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               Close
             </button>
             <button
               onClick={onViewPlans}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium ${
+                planStatus === 'REJECTED' 
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              }`}
             >
-              {planStatus === 'REJECTED' ? 'Create New Plan' : 'View My Plans'}
+              {getButtonText()}
             </button>
           </div>
         </div>
@@ -150,88 +219,190 @@ const PlanStatusModal: React.FC<{
   );
 };
 
-// Budget Calculation Type Selection Modal
-const BudgetCalculationModal: React.FC<{
-  isOpen: boolean;
-  onClose: () => void;
-  onSelectCalculationType: (type: BudgetCalculationType, activityType?: ActivityType) => void;
-}> = ({ isOpen, onClose, onSelectCalculationType }) => {
-  const [selectedActivityType, setSelectedActivityType] = useState<ActivityType>('Training');
+// Plans Table Component
+interface PlansTableProps {
+  onCreateNewPlan: () => void;
+  userOrgId: number | null;
+}
 
-  if (!isOpen) return null;
+const PlansTable: React.FC<PlansTableProps> = ({ onCreateNewPlan, userOrgId }) => {
+  const navigate = useNavigate();
+  const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
 
-  const activityTypes: { value: ActivityType; label: string; description: string }[] = [
-    { value: 'Training', label: 'Training', description: 'Training sessions, workshops, capacity building' },
-    { value: 'Meeting', label: 'Meeting', description: 'Meetings, conferences, consultations' },
-    { value: 'Workshop', label: 'Workshop', description: 'Workshops, seminars, technical sessions' },
-    { value: 'Printing', label: 'Printing', description: 'Document printing, materials production' },
-    { value: 'Supervision', label: 'Supervision', description: 'Supervision visits, monitoring activities' },
-    { value: 'Procurement', label: 'Procurement', description: 'Equipment, supplies, materials procurement' },
-    { value: 'Other', label: 'Other', description: 'Other activities not covered above' }
-  ];
+  // Fetch organizations for mapping
+  useEffect(() => {
+    const fetchOrganizations = async () => {
+      try {
+        const response = await organizations.getAll();
+        const orgMap: Record<string, string> = {};
+        
+        if (response && Array.isArray(response)) {
+          response.forEach((org: any) => {
+            if (org && org.id) {
+              orgMap[org.id] = org.name;
+            }
+          });
+        }
+        
+        setOrganizationsMap(orgMap);
+      } catch (error) {
+        console.error('Failed to fetch organizations:', error);
+      }
+    };
+    
+    fetchOrganizations();
+  }, []);
+
+  // Fetch user's plans
+  const { data: userPlans, isLoading, refetch } = useQuery({
+    queryKey: ['user-plans', userOrgId],
+    queryFn: async () => {
+      if (!userOrgId) return { data: [] };
+      
+      try {
+        const response = await api.get('/plans/', {
+          params: { organization: userOrgId }
+        });
+        
+        const plansData = response.data?.results || response.data || [];
+        
+        // Map organization names
+        plansData.forEach((plan: any) => {
+          if (plan.organization && organizationsMap[plan.organization]) {
+            plan.organizationName = organizationsMap[plan.organization];
+          }
+        });
+        
+        return { data: plansData };
+      } catch (error) {
+        console.error('Error fetching user plans:', error);
+        return { data: [] };
+      }
+    },
+    enabled: !!userOrgId && Object.keys(organizationsMap).length > 0,
+    retry: 2
+  });
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    try {
+      return format(new Date(dateString), 'MMM d, yyyy');
+    } catch (e) {
+      return 'Invalid date';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'APPROVED':
+        return 'bg-green-100 text-green-800';
+      case 'SUBMITTED':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'REJECTED':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const handleViewPlan = (plan: any) => {
+    navigate(`/plans/${plan.id}`);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader className="h-6 w-6 animate-spin mr-2" />
+        <span>Loading your plans...</span>
+      </div>
+    );
+  }
+
+  const plans = userPlans?.data || [];
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg p-6 max-w-2xl w-full">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Select Budget Calculation Method</h3>
-        
-        <div className="space-y-4">
-          {/* Costing Tool Option */}
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h4 className="font-medium text-gray-900 mb-2">Using Costing Tool (Recommended)</h4>
-            <p className="text-sm text-gray-600 mb-4">
-              Use our built-in costing tools to calculate accurate budgets based on activity type and location.
-            </p>
-            
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Activity Type:
-              </label>
-              <select
-                value={selectedActivityType}
-                onChange={(e) => setSelectedActivityType(e.target.value as ActivityType)}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              >
-                {activityTypes.map(type => (
-                  <option key={type.value} value={type.value}>
-                    {type.label} - {type.description}
-                  </option>
-                ))}
-              </select>
-            </div>
-            
-            <button
-              onClick={() => onSelectCalculationType('WITH_TOOL', selectedActivityType)}
-              className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              Use {selectedActivityType} Costing Tool
-            </button>
-          </div>
-
-          {/* Manual Option */}
-          <div className="border border-gray-200 rounded-lg p-4">
-            <h4 className="font-medium text-gray-900 mb-2">Manual Entry</h4>
-            <p className="text-sm text-gray-600 mb-4">
-              Enter budget amounts manually without using the costing tools.
-            </p>
-            
-            <button
-              onClick={() => onSelectCalculationType('WITHOUT_TOOL')}
-              className="w-full px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
-            >
-              Enter Budget Manually
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-6 flex justify-end">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-semibold text-gray-900">Your Plans</h2>
           <button
-            onClick={onClose}
-            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            onClick={onCreateNewPlan}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
           >
-            Cancel
+            <Plus className="h-4 w-4 mr-2" />
+            Create New Plan
           </button>
         </div>
+
+        {plans.length === 0 ? (
+          <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+            <FileSpreadsheet className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Plans Created</h3>
+            <p className="text-gray-500 mb-4">You haven't created any plans yet.</p>
+            <button
+              onClick={onCreateNewPlan}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Create Your First Plan
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Plan Type
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Planning Period
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Submitted Date
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {plans.map((plan: any) => (
+                  <tr key={plan.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {plan.type}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {plan.from_date && plan.to_date ? 
+                        `${formatDate(plan.from_date)} - ${formatDate(plan.to_date)}` :
+                        'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(plan.status)}`}>
+                        {plan.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {formatDate(plan.submitted_at)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button
+                        onClick={() => handleViewPlan(plan)}
+                        className="text-blue-600 hover:text-blue-900 flex items-center"
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -242,426 +413,571 @@ const Planning: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // Helper function to get organization name
-  const getOrganizationName = (orgId: number | null, organizationsData: any[]): string => {
-    if (!orgId || !organizationsData) return 'Unknown Organization';
-    
-    const org = organizationsData.find(o => o.id === orgId);
-    return org?.name || 'Unknown Organization';
-  };
-
-  // State management
-  const [currentStep, setCurrentStep] = useState<'plan-type' | 'objective-mode' | 'objectives' | 'planning' | 'review'>('plan-type');
+  // Core state
+  const [currentStep, setCurrentStep] = useState<PlanningStep>('plan-type');
   const [selectedPlanType, setSelectedPlanType] = useState<PlanType>('LEO/EO Plan');
-  const [objectiveSelectionMode, setObjectiveSelectionMode] = useState<'default' | 'custom'>('default');
   const [selectedObjectives, setSelectedObjectives] = useState<StrategicObjective[]>([]);
   const [selectedObjective, setSelectedObjective] = useState<StrategicObjective | null>(null);
-  const [selectedProgram, setSelectedProgram] = useState<any>(null);
-  const [selectedInitiative, setSelectedInitiative] = useState<any>(null);
-  const [selectedActivity, setSelectedActivity] = useState<any>(null);
+  const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
+  const [selectedInitiative, setSelectedInitiative] = useState<StrategicInitiative | null>(null);
   
-  // Form states
+  // User and organization state
+  const [userOrganization, setUserOrganization] = useState<Organization | null>(null);
+  const [plannerName, setPlannerName] = useState<string>('');
+  const [isUserPlanner, setIsUserPlanner] = useState(false);
+  const [userOrgId, setUserOrgId] = useState<number | null>(null);
+  
+  // Planning period state
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
+  
+  // Form and UI state
   const [showInitiativeForm, setShowInitiativeForm] = useState(false);
   const [showMeasureForm, setShowMeasureForm] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [showBudgetForm, setShowBudgetForm] = useState(false);
   const [showBudgetDetails, setShowBudgetDetails] = useState(false);
   const [showCostingTool, setShowCostingTool] = useState(false);
-  const [showBudgetCalculationModal, setShowBudgetCalculationModal] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [planStatusInfo, setPlanStatusInfo] = useState<{
+    status: 'SUBMITTED' | 'APPROVED' | 'REJECTED' | null;
+    message: string;
+  }>({ status: null, message: '' });
+  const [showPlansTable, setShowPlansTable] = useState(true);
   
-  // Edit states
-  const [editingInitiative, setEditingInitiative] = useState<any>(null);
-  const [editingMeasure, setEditingMeasure] = useState<any>(null);
-  const [editingActivity, setEditingActivity] = useState<any>(null);
-  const [editingBudget, setEditingBudget] = useState<any>(null);
+  // Edit state
+  const [editingInitiative, setEditingInitiative] = useState<StrategicInitiative | null>(null);
+  const [editingMeasure, setEditingMeasure] = useState<PerformanceMeasure | null>(null);
+  const [editingActivity, setEditingActivity] = useState<MainActivity | null>(null);
+  const [editingBudget, setEditingBudget] = useState<ActivityBudget | null>(null);
   
-  // Budget states
+  // Budget and costing state
+  const [selectedActivity, setSelectedActivity] = useState<MainActivity | null>(null);
   const [budgetCalculationType, setBudgetCalculationType] = useState<BudgetCalculationType>('WITHOUT_TOOL');
   const [selectedActivityType, setSelectedActivityType] = useState<ActivityType | null>(null);
   const [costingToolData, setCostingToolData] = useState<any>(null);
   
-  // Modal states
-  const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showStatusModal, setShowStatusModal] = useState(false);
-  const [planStatusInfo, setPlanStatusInfo] = useState({ status: '', message: '' });
-  
-  // Loading and error states
+  // Error and loading state
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  
-  // User and organization data
-  const [userOrganization, setUserOrganization] = useState<Organization | null>(null);
-  const [userOrgId, setUserOrgId] = useState<number | null>(null);
-  const [plannerName, setPlannerName] = useState('');
-  const [isUserPlanner, setIsUserPlanner] = useState(false);
-  
-  // Plan dates
-  const [fromDate, setFromDate] = useState(() => {
-    const now = new Date();
-    const fiscalYearStart = new Date(now.getFullYear(), 6, 1); // July 1st
-    if (now < fiscalYearStart) {
-      fiscalYearStart.setFullYear(now.getFullYear() - 1);
-    }
-    return fiscalYearStart.toISOString().split('T')[0];
-  });
-  
-  const [toDate, setToDate] = useState(() => {
-    const now = new Date();
-    const fiscalYearEnd = new Date(now.getFullYear() + 1, 5, 30); // June 30th next year
-    if (now.getMonth() < 6) {
-      fiscalYearEnd.setFullYear(now.getFullYear());
-    }
-    return fiscalYearEnd.toISOString().split('T')[0];
-  });
 
-  // Fetch organizations data
-  const { data: organizationsData } = useQuery({
-    queryKey: ['organizations'],
-    queryFn: () => organizations.getAll(),
-  });
-
-  // Check authentication and user permissions
+  // Check for existing plans on component mount
   useEffect(() => {
-    const checkAuth = async () => {
+    const checkExistingPlans = async () => {
+      if (!userOrgId) return;
+      
+      try {
+        const response = await api.get('/plans/', {
+          params: { organization: userOrgId }
+        });
+        
+        const plans = response.data?.results || response.data || [];
+        
+        // Check for existing plans
+        const submittedPlan = plans.find((p: any) => p.status === 'SUBMITTED');
+        const approvedPlan = plans.find((p: any) => p.status === 'APPROVED');
+        const rejectedPlan = plans.find((p: any) => p.status === 'REJECTED');
+        
+        if (approvedPlan) {
+          setPlanStatusInfo({
+            status: 'APPROVED',
+            message: 'Your plan has been approved. You cannot create a new plan until the next planning cycle.'
+          });
+          setShowStatusModal(true);
+          setShowPlansTable(true);
+        } else if (submittedPlan) {
+          setPlanStatusInfo({
+            status: 'SUBMITTED',
+            message: 'You have already submitted a plan. Please wait for the evaluator to review it before creating a new one.'
+          });
+          setShowStatusModal(true);
+          setShowPlansTable(true);
+        } else {
+          // No blocking plans, show normal planning interface
+          setShowPlansTable(true);
+        }
+      } catch (error) {
+        console.error('Failed to check existing plans:', error);
+        setShowPlansTable(true);
+      }
+    };
+    
+    checkExistingPlans();
+  }, [userOrgId]);
+  // Fetch current user and organization
+  useEffect(() => {
+    const fetchUserData = async () => {
       try {
         const authData = await auth.getCurrentUser();
-        
         if (!authData.isAuthenticated) {
           navigate('/login');
           return;
         }
-
-        // Check if user is a planner
-        const userIsPlanner = isPlanner(authData.userOrganizations);
-        setIsUserPlanner(userIsPlanner);
         
-        if (!userIsPlanner) {
-          navigate('/dashboard');
-          return;
-        }
-
-        // Set user data
+        setIsUserPlanner(isPlanner(authData.userOrganizations));
+        
         if (authData.userOrganizations && authData.userOrganizations.length > 0) {
-          const userOrgData = authData.userOrganizations[0];
-          setUserOrgId(userOrgData.organization);
+          const userOrg = authData.userOrganizations[0];
+          setUserOrgId(userOrg.organization);
           
-          // Find organization details
-          if (organizationsData && Array.isArray(organizationsData)) {
-            const org = organizationsData.find(o => o.id === userOrgData.organization);
-            setUserOrganization(org || null);
+          // Fetch organization details
+          try {
+            const orgData = await organizations.getById(userOrg.organization.toString());
+            setUserOrganization(orgData);
+          } catch (orgError) {
+            console.error('Failed to fetch organization details:', orgError);
           }
         }
-
+        
         // Set planner name
         const fullName = `${authData.user?.first_name || ''} ${authData.user?.last_name || ''}`.trim();
         setPlannerName(fullName || authData.user?.username || 'Unknown Planner');
-
-        // Check for existing plans and their status
-        await checkExistingPlanStatus(authData.userOrganizations[0]?.organization);
+        
+        // Set default dates (current fiscal year)
+        const currentDate = new Date();
+        const currentYear = currentDate.getFullYear();
+        const fiscalYearStart = new Date(currentYear, 6, 1); // July 1st
+        const fiscalYearEnd = new Date(currentYear + 1, 5, 30); // June 30th next year
+        
+        setFromDate(fiscalYearStart.toISOString().split('T')[0]);
+        setToDate(fiscalYearEnd.toISOString().split('T')[0]);
         
       } catch (error) {
-        console.error('Authentication check failed:', error);
-        navigate('/login');
+        console.error('Failed to fetch user data:', error);
+        setError('Failed to load user information');
       }
     };
+    
+    fetchUserData();
+  }, [navigate]);
 
-    checkAuth();
-  }, [navigate, organizationsData]);
+  // Check permissions
+  if (!isUserPlanner && !isAdmin) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center p-8 bg-yellow-50 rounded-lg border border-yellow-200">
+          <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-yellow-800 mb-2">Access Restricted</h3>
+          <p className="text-yellow-600">{t('planning.permissions.plannerRequired')}</p>
+        </div>
+      </div>
+    );
+  }
 
-  // Check for existing plan status
-  const checkExistingPlanStatus = async (orgId: number) => {
-    try {
-      console.log('Checking existing plan status for organization:', orgId);
-      
-      const response = await plans.getAll();
-      const allPlans = response?.data || [];
-      
-      // Filter plans for the user's organization
-      const userPlans = allPlans.filter(plan => 
-        plan.organization === orgId && 
-        ['SUBMITTED', 'APPROVED'].includes(plan.status)
-      );
-      
-      console.log('Found existing plans:', userPlans.length);
-      
-      if (userPlans.length > 0) {
-        const latestPlan = userPlans[0]; // Assuming the first one is the latest
+  // Show plans table first
+  if (showPlansTable && currentStep === 'plan-type') {
+    return (
+      <div className="px-4 py-6 sm:px-0">
+        <PlansTable 
+          onCreateNewPlan={() => {
+            setShowPlansTable(false);
+            setCurrentStep('plan-type');
+          }}
+          userOrgId={userOrgId}
+        />
         
-        if (latestPlan.status === 'SUBMITTED') {
-          setPlanStatusInfo({
-            status: 'SUBMITTED',
-            message: 'You already have a plan submitted for review. Please wait for the review to complete before creating a new plan.'
-          });
-          setShowStatusModal(true);
-        } else if (latestPlan.status === 'APPROVED') {
-          setPlanStatusInfo({
-            status: 'APPROVED', 
-            message: 'You already have an approved plan. Contact your administrator if you need to create a new plan.'
-          });
-          setShowStatusModal(true);
-        }
-      }
-    } catch (error) {
-      console.error('Error checking existing plan status:', error);
-      // Don't block the user if we can't check - let them proceed
-    }
-  };
-
-  // Event handlers
+        {/* Status Modal */}
+        <PlanStatusModal
+          isOpen={showStatusModal}
+          onClose={() => setShowStatusModal(false)}
+          onViewPlans={() => {
+            setShowStatusModal(false);
+            // Stay on plans table
+          }}
+          planStatus={planStatusInfo.status}
+          message={planStatusInfo.message}
+        />
+      </div>
+    );
+  }
+  // Step handlers
   const handlePlanTypeSelect = (type: PlanType) => {
     setSelectedPlanType(type);
-    setCurrentStep('objective-mode');
+    setCurrentStep('objective-selection');
   };
 
-  const handleObjectiveModeSelect = (mode: 'default' | 'custom') => {
-    setObjectiveSelectionMode(mode);
-    setCurrentStep('objectives');
-  };
 
   const handleObjectivesSelected = (objectives: StrategicObjective[]) => {
-    console.log('Planning: Objectives selected:', objectives.length);
+    console.log('Objectives selected in Planning:', objectives);
     setSelectedObjectives(objectives);
     
-    if (objectives.length > 0) {
-      // Auto-select the first objective for planning
+    // If only one objective, auto-select it
+    if (objectives.length === 1) {
       setSelectedObjective(objectives[0]);
     }
   };
 
   const handleProceedToPlanning = () => {
-    if (selectedObjectives.length === 0) {
-      alert('Please select at least one objective before proceeding');
-      return;
-    }
+    console.log('Proceeding to planning with objectives:', selectedObjectives);
     setCurrentStep('planning');
   };
 
   const handleSelectObjective = (objective: StrategicObjective) => {
+    console.log('Objective selected:', objective);
     setSelectedObjective(objective);
     setSelectedProgram(null);
     setSelectedInitiative(null);
-    setSelectedActivity(null);
   };
 
-  const handleSelectProgram = (program: any) => {
+  const handleSelectProgram = (program: Program) => {
+    console.log('Program selected:', program);
     setSelectedProgram(program);
     setSelectedObjective(null);
     setSelectedInitiative(null);
-    setSelectedActivity(null);
   };
 
-  const handleSelectInitiative = (initiative: any) => {
+  const handleSelectInitiative = (initiative: StrategicInitiative) => {
+    console.log('Initiative selected:', initiative);
     setSelectedInitiative(initiative);
-    setSelectedActivity(null);
   };
 
-  const handleSelectActivity = (activity: any) => {
-    setSelectedActivity(activity);
-  };
-
-  // Initiative management
-  const handleEditInitiative = (initiative: any) => {
-    setEditingInitiative(initiative);
+  // Initiative CRUD handlers
+  const handleEditInitiative = (initiative: StrategicInitiative | {}) => {
+    // Pass the custom weight data when editing/creating initiatives
+    const initiativeWithWeight = {
+      ...initiative,
+      parentWeight: selectedObjective ? (
+        selectedObjectives.find(obj => obj.id === selectedObjective.id)?.effective_weight ||
+        selectedObjectives.find(obj => obj.id === selectedObjective.id)?.planner_weight ||
+        selectedObjective.weight
+      ) : selectedProgram?.strategic_objective?.weight || 100,
+      selectedObjectiveData: selectedObjective ? 
+        selectedObjectives.find(obj => obj.id === selectedObjective.id) : null
+    };
+    
+    setEditingInitiative(initiative as StrategicInitiative);
     setShowInitiativeForm(true);
   };
 
   const handleSaveInitiative = async (data: any) => {
     try {
+      setError(null);
+      
       if (editingInitiative?.id) {
         await initiatives.update(editingInitiative.id, data);
       } else {
         await initiatives.create(data);
       }
       
-      // Refresh initiatives list
+      // Refresh initiatives data
       queryClient.invalidateQueries({ queryKey: ['initiatives'] });
       setRefreshKey(prev => prev + 1);
       
-      handleCancel();
-    } catch (error) {
-      console.error('Error saving initiative:', error);
-      throw error;
+      setShowInitiativeForm(false);
+      setEditingInitiative(null);
+      setSuccess('Initiative saved successfully');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error: any) {
+      console.error('Failed to save initiative:', error);
+      setError(error.message || 'Failed to save initiative');
     }
   };
 
-  // Performance measure management
-  const handleEditMeasure = (measure: any) => {
-    setEditingMeasure(measure);
+  // Performance measure CRUD handlers
+  const handleEditMeasure = (measure: PerformanceMeasure | {}) => {
+    setEditingMeasure(measure as PerformanceMeasure);
     setShowMeasureForm(true);
   };
 
   const handleSaveMeasure = async (data: any) => {
     try {
+      setError(null);
+      
       if (editingMeasure?.id) {
         await performanceMeasures.update(editingMeasure.id, data);
       } else {
         await performanceMeasures.create(data);
       }
       
-      // Refresh measures list
+      // Refresh measures data
       queryClient.invalidateQueries({ queryKey: ['performance-measures'] });
       setRefreshKey(prev => prev + 1);
       
-      handleCancel();
-    } catch (error) {
-      console.error('Error saving performance measure:', error);
-      throw error;
+      setShowMeasureForm(false);
+      setEditingMeasure(null);
+      setSuccess('Performance measure saved successfully');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error: any) {
+      console.error('Failed to save performance measure:', error);
+      setError(error.message || 'Failed to save performance measure');
     }
   };
 
-  // Main activity management
-  const handleEditActivity = (activity: any) => {
-    setEditingActivity(activity);
+  // Main activity CRUD handlers
+  const handleEditActivity = (activity: MainActivity | {}) => {
+    setEditingActivity(activity as MainActivity);
     setShowActivityForm(true);
   };
 
   const handleSaveActivity = async (data: any) => {
     try {
+      setError(null);
+      
       if (editingActivity?.id) {
         await mainActivities.update(editingActivity.id, data);
       } else {
         await mainActivities.create(data);
       }
       
-      // Refresh activities list
+      // Refresh activities data
       queryClient.invalidateQueries({ queryKey: ['main-activities'] });
       setRefreshKey(prev => prev + 1);
       
-      handleCancel();
-    } catch (error) {
-      console.error('Error saving main activity:', error);
-      throw error;
+      setShowActivityForm(false);
+      setEditingActivity(null);
+      setSuccess('Main activity saved successfully');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error: any) {
+      console.error('Failed to save main activity:', error);
+      setError(error.message || 'Failed to save main activity');
     }
   };
 
-  // Budget management
-  const handleAddBudget = (activity: any) => {
+  // Budget handlers
+  const handleAddBudget = (activity: MainActivity, calculationType: BudgetCalculationType, activityType?: ActivityType) => {
     setSelectedActivity(activity);
-    setEditingBudget(null);
-    setCostingToolData(null);
-    setShowBudgetCalculationModal(true);
-  };
-
-  const handleEditBudget = (activity: any) => {
-    setSelectedActivity(activity);
-    setEditingBudget(activity.budget);
-    setBudgetCalculationType(activity.budget?.budget_calculation_type || 'WITHOUT_TOOL');
-    setSelectedActivityType(activity.budget?.activity_type || null);
-    setShowBudgetForm(true);
-  };
-
-  const handleViewBudget = (activity: any) => {
-    setSelectedActivity(activity);
-    setShowBudgetDetails(true);
-  };
-
-  // Handle budget deletion
-  const handleDeleteBudget = async (activityId: string) => {
-    try {
-      console.log('Deleting budget for activity:', activityId);
-      await activityBudgets.deleteByActivity(activityId);
-      
-      // Find the activity and its budget
-      let budgetToDelete = null;
-      
-      // Search through all objectives and initiatives to find the budget
-      for (const objective of selectedObjectives) {
-        if (!objective.initiatives) continue;
-        
-        for (const initiative of objective.initiatives) {
-          if (!initiative.main_activities) continue;
-          
-          const activity = initiative.main_activities.find(a => a.id === activityId);
-          if (activity?.budget) {
-            budgetToDelete = activity.budget;
-            break;
-          }
-        }
-        
-        if (budgetToDelete) break;
-      }
-      
-      if (!budgetToDelete?.id) {
-        setError('Budget not found for deletion');
-        return;
-      }
-      
-      console.log('Deleting budget with ID:', budgetToDelete.id);
-      
-      // Delete the budget using the budget ID
-      await activityBudgets.delete(budgetToDelete.id);
-      
-      // Call the API to delete the budget
-      const response = await api.delete(`/activity-budgets/?activity=${activityId}`);
-      console.log('Budget deletion response:', response);
-      
-      // Refresh the activities data to reflect the change
-      queryClient.invalidateQueries({ queryKey: ['main-activities'] });
-      
-      // Show success message
-      console.log('Budget delete response:', response);
-      setSuccessMessage('Budget deleted successfully');
-      setTimeout(() => setSuccessMessage(null), 3000);
-      
-      queryClient.invalidateQueries({ queryKey: ['activity-budgets'] });
-      
-      // Show success message
-      setSuccessMessage('Budget deleted successfully');
-      setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (error) {
-      console.error('Error deleting budget:', error);
-      setError('Failed to delete budget. Please try again.');
-      setError('Failed to delete budget. Please try again.');
-      setTimeout(() => setError(null), 5000);
-    }
-  };
-
-  const handleSelectBudgetCalculationType = (type: BudgetCalculationType, activityType?: ActivityType) => {
-    setBudgetCalculationType(type);
+    setBudgetCalculationType(calculationType);
     setSelectedActivityType(activityType || null);
-    setShowBudgetCalculationModal(false);
     
-    if (type === 'WITH_TOOL' && activityType) {
+    if (calculationType === 'WITH_TOOL' && activityType) {
       setShowCostingTool(true);
     } else {
       setShowBudgetForm(true);
     }
   };
 
-  const handleCostingToolComplete = (data: any) => {
-    setCostingToolData(data);
+  const handleEditBudget = (activity: MainActivity) => {
+    setSelectedActivity(activity);
+    setEditingBudget(activity.budget || null);
+    
+    if (activity.budget?.budget_calculation_type === 'WITH_TOOL') {
+      setBudgetCalculationType('WITH_TOOL');
+      setSelectedActivityType(activity.budget.activity_type || null);
+    } else {
+      setBudgetCalculationType('WITHOUT_TOOL');
+      setSelectedActivityType(null);
+    }
+    
+    setShowBudgetForm(true);
+  };
+
+  const handleViewBudget = (activity: MainActivity) => {
+    setSelectedActivity(activity);
+    setShowBudgetDetails(true);
+  };
+
+  const handleCostingToolComplete = (costingData: any) => {
+    console.log('Costing tool completed with data:', costingData);
+    setCostingToolData(costingData);
     setShowCostingTool(false);
     setShowBudgetForm(true);
   };
 
-  const handleSaveBudget = async (data: any) => {
+  const handleSaveBudget = async (budgetData: any) => {
     try {
+      setError(null);
+      
       if (!selectedActivity?.id) {
         throw new Error('No activity selected for budget');
       }
-
-      // Update the activity's budget
-      await mainActivities.updateBudget(selectedActivity.id, data);
       
-      // Refresh activities list to show updated budget
+      console.log('Saving budget for activity:', selectedActivity.id);
+      console.log('Budget data:', budgetData);
+      
+      // Use the custom budget update endpoint
+      const response = await mainActivities.updateBudget(selectedActivity.id, budgetData);
+      
+      console.log('Budget saved successfully:', response.data);
+      
+      // Refresh activities data to get updated budget
       queryClient.invalidateQueries({ queryKey: ['main-activities'] });
       setRefreshKey(prev => prev + 1);
       
-      handleCancel();
-    } catch (error) {
-      console.error('Error saving budget:', error);
-      throw error;
+      setShowBudgetForm(false);
+      setSelectedActivity(null);
+      setEditingBudget(null);
+      setCostingToolData(null);
+      setSuccess('Budget saved successfully');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error: any) {
+      console.error('Failed to save budget:', error);
+      setError(error.message || 'Failed to save budget');
     }
   };
 
-  // Costing tool rendering
+  // Plan submission handlers
+  const handleReviewPlan = () => {
+    setCurrentStep('review');
+  };
+
+  const handleSubmitPlan = async () => {
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      
+      if (!userOrganization || selectedObjectives.length === 0) {
+        throw new Error('Missing required plan data');
+      }
+      
+      // Check for existing plans before submitting
+      try {
+        const existingPlansResponse = await api.get('/plans/', {
+          params: { organization: userOrgId }
+        });
+        
+        const existingPlans = existingPlansResponse.data?.results || existingPlansResponse.data || [];
+        const submittedPlan = existingPlans.find((p: any) => p.status === 'SUBMITTED');
+        const approvedPlan = existingPlans.find((p: any) => p.status === 'APPROVED');
+        
+        if (approvedPlan) {
+          setPlanStatusInfo({
+            status: 'APPROVED',
+            message: 'You already have an approved plan. You cannot create a new plan until the next planning cycle.'
+          });
+          setShowStatusModal(true);
+          return;
+        }
+        
+        if (submittedPlan) {
+          setPlanStatusInfo({
+            status: 'SUBMITTED',
+            message: 'You have already submitted a plan. Please wait for the evaluator to review it before creating a new one.'
+          });
+          setShowStatusModal(true);
+          return;
+        }
+      } catch (checkError) {
+        console.warn('Failed to check existing plans:', checkError);
+        // Continue with submission if check fails
+      }
+      
+      const selectedObjectiveIds = selectedObjectives.map(obj => obj.id);
+      
+      // Prepare selected objectives weights
+      const selectedObjectivesWeights: Record<string, number> = {};
+      selectedObjectives.forEach(obj => {
+        const effectiveWeight = obj.effective_weight !== undefined 
+          ? obj.effective_weight
+          : obj.planner_weight !== undefined && obj.planner_weight !== null
+            ? obj.planner_weight
+            : obj.weight;
+        selectedObjectivesWeights[obj.id.toString()] = effectiveWeight;
+      });
+      
+      // Create plan data
+      const planData = {
+        organization: userOrganization.id,
+        planner_name: plannerName,
+        type: selectedPlanType,
+        strategic_objective: selectedObjectives[0].id, // Primary objective
+        selected_objectives: selectedObjectiveIds, // Send only IDs - CORRECT
+        selected_objectives_weights: selectedObjectivesWeights,
+        fiscal_year: new Date().getFullYear().toString(),
+        from_date: fromDate,
+        to_date: toDate,
+        status: 'SUBMITTED'
+      };
+      
+      console.log('Submitting plan:', planData);
+      console.log('Selected objective IDs:', selectedObjectiveIds);
+      console.log('Selected objectives weights:', selectedObjectivesWeights);
+      
+      // Create the plan
+      const createdPlan = await plans.create(planData);
+      console.log('Plan created:', createdPlan);
+      
+      // Show success modal
+      setShowSuccessModal(true);
+      
+    } catch (error: any) {
+      console.error('Failed to submit plan:', error);
+      
+      // Check if it's a duplicate plan error
+      if (error.response?.data?.detail?.includes('already been submitted') || 
+          error.response?.data?.detail?.includes('duplicate')) {
+        setPlanStatusInfo({
+          status: 'SUBMITTED',
+          message: 'You have already submitted a plan. Please wait for the evaluator to review it.'
+        });
+        setShowStatusModal(true);
+      } else {
+        console.error('Error response data:', error.response?.data);
+        let errorMessage = 'Failed to submit plan';
+        if (error.response?.data?.detail) {
+          errorMessage = error.response.data.detail;
+        } else if (error.response?.data?.selected_objectives) {
+          errorMessage = 'Error with selected objectives: ' + JSON.stringify(error.response.data.selected_objectives);
+        }
+        setError(errorMessage);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCreateNewPlan = () => {
+    // Reset all state for new plan
+    setShowPlansTable(false);
+    setCurrentStep('plan-type');
+    setSelectedObjectives([]);
+    setSelectedObjective(null);
+    setSelectedProgram(null);
+    setSelectedInitiative(null);
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleViewMyPlans = () => {
+    setShowPlansTable(true);
+    setCurrentStep('plan-type');
+  };
+  // Navigation handlers
+  const handleBack = () => {
+    switch (currentStep) {
+      case 'objective-selection':
+        setCurrentStep('plan-type');
+        break;
+      case 'planning':
+        setCurrentStep('objective-selection');
+        break;
+      case 'review':
+        setCurrentStep('planning');
+        break;
+      case 'submit':
+        setCurrentStep('review');
+        break;
+      default:
+        setShowPlansTable(true);
+    }
+  };
+
+  const handleCancel = () => {
+    setShowInitiativeForm(false);
+    setShowMeasureForm(false);
+    setShowActivityForm(false);
+    setShowBudgetForm(false);
+    setShowBudgetDetails(false);
+    setShowCostingTool(false);
+    setEditingInitiative(null);
+    setEditingMeasure(null);
+    setEditingActivity(null);
+    setEditingBudget(null);
+    setSelectedActivity(null);
+    setCostingToolData(null);
+    setError(null);
+  };
+
+  // Render costing tools
   const renderCostingTool = () => {
-    if (!selectedActivityType) return null;
+    if (!selectedActivityType || !selectedActivity) return null;
 
     const commonProps = {
       onCalculate: handleCostingToolComplete,
-      onCancel: () => setShowCostingTool(false),
+      onCancel: handleCancel,
       initialData: costingToolData
     };
 
@@ -671,334 +987,82 @@ const Planning: React.FC = () => {
       case 'Meeting':
       case 'Workshop':
         return <MeetingWorkshopCostingTool {...commonProps} />;
+      case 'Supervision':
+        return <SupervisionCostingTool {...commonProps} />;
       case 'Printing':
         return <PrintingCostingTool {...commonProps} />;
       case 'Procurement':
         return <ProcurementCostingTool {...commonProps} />;
-      case 'Supervision':
-        return <SupervisionCostingTool {...commonProps} />;
       default:
-        return <div>Costing tool not available for this activity type</div>;
+        return null;
     }
   };
 
-  // Cancel/close handlers
-  const handleCancel = () => {
-    setShowInitiativeForm(false);
-    setShowMeasureForm(false);
-    setShowActivityForm(false);
-    setShowBudgetForm(false);
-    setShowBudgetDetails(false);
-    setShowCostingTool(false);
-    setShowBudgetCalculationModal(false);
-    setEditingInitiative(null);
-    setEditingMeasure(null);
-    setEditingActivity(null);
-    setEditingBudget(null);
-    setSelectedActivity(null);
-    setCostingToolData(null);
-  };
-
-  // Navigation handlers
-  const handleBack = () => {
-    switch (currentStep) {
-      case 'objective-mode':
-        setCurrentStep('plan-type');
-        break;
-      case 'objectives':
-        setCurrentStep('objective-mode');
-        break;
-      case 'planning':
-        setCurrentStep('objectives');
-        break;
-      case 'review':
-        setCurrentStep('planning');
-        break;
-    }
-  };
-
-  const handleProceedToReview = () => {
-    setCurrentStep('review');
-  };
-
-  const handlePreviewPlan = () => {
-    setShowPreviewModal(true);
-  };
-
-  // Enhanced plan submission with comprehensive validation and error handling
-  const handleSubmitPlan = async () => {
-    if (!userOrgId || selectedObjectives.length === 0) {
-      alert('Please select objectives before submitting the plan');
-      return;
-    }
-
-    setIsSubmitting(true);
-    
-    try {
-      console.log('=== STARTING PLAN SUBMISSION ===');
-      console.log('Selected objectives for submission:', selectedObjectives.length);
-      console.log('User organization ID:', userOrgId);
-      console.log('Planner name:', plannerName);
-      
-      // Pre-submission validation
-      if (selectedObjectives.length === 0) {
-        throw new Error('No objectives selected for submission');
-      }
-
-      // Validate that all objectives have proper weights
-      const invalidObjectives = selectedObjectives.filter(obj => 
-        !obj.effective_weight && !obj.planner_weight && !obj.weight
-      );
-      
-      if (invalidObjectives.length > 0) {
-        throw new Error(`Some objectives are missing weight information: ${invalidObjectives.map(obj => obj.title).join(', ')}`);
-      }
-
-      // Calculate total weight to ensure it's 100%
-      const totalWeight = selectedObjectives.reduce((sum, obj) => {
-        const effectiveWeight = obj.effective_weight || obj.planner_weight || obj.weight;
-        return sum + effectiveWeight;
-      }, 0);
-
-      if (Math.abs(totalWeight - 100) > 0.01) {
-        throw new Error(`Total objectives weight must be 100%. Current total: ${totalWeight.toFixed(2)}%`);
-      }
-
-      // Ensure fresh authentication and CSRF token
-      console.log('Refreshing authentication...');
-      await auth.getCurrentUser();
-
-      // Prepare plan data with comprehensive objective information
-      const planData = {
-        organization: userOrgId,
-        planner_name: plannerName,
-        type: selectedPlanType,
-        strategic_objective: selectedObjectives[0].id, // Primary objective for backward compatibility
-        fiscal_year: new Date(fromDate).getFullYear().toString(),
-        from_date: fromDate,
-        to_date: toDate,
-        status: 'SUBMITTED',
-        // Include all selected objectives
-        selected_objectives: selectedObjectives.map(obj => obj.id),
-        // Include custom weights for each objective
-        selected_objectives_weights: selectedObjectives.reduce((weights, obj) => {
-          const effectiveWeight = obj.effective_weight || obj.planner_weight || obj.weight;
-          weights[obj.id] = effectiveWeight;
-          return weights;
-        }, {} as Record<string, number>)
-      };
-
-      console.log('Plan data prepared for submission:', {
-        ...planData,
-        selected_objectives_count: planData.selected_objectives.length,
-        weights_count: Object.keys(planData.selected_objectives_weights).length
-      });
-      queryClient.invalidateQueries({ 
-        queryKey: ['activity-budgets'] 
-      });
-      
-      // Also refresh the selected initiative data
-      if (selectedInitiative?.id) {
-        queryClient.invalidateQueries({ 
-          queryKey: ['initiatives', selectedInitiative.id] 
-        });
-      }
-
-      // Submit plan with retry logic for production reliability
-      let submitAttempt = 0;
-      const maxAttempts = 3;
-      let lastError;
-
-      while (submitAttempt < maxAttempts) {
-        try {
-          submitAttempt++;
-          console.log(`Plan submission attempt ${submitAttempt}/${maxAttempts}`);
-          
-          // Add timeout to prevent hanging requests
-          const submitPromise = plans.create(planData);
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Submission timeout after 15 seconds')), 15000)
-          );
-          
-          const result = await Promise.race([submitPromise, timeoutPromise]);
-          
-          console.log('Plan submission successful:', result);
-          
-          // Validate that the plan was created with all objectives
-          if (result?.data?.id) {
-            console.log('Validating submitted plan...');
-            
-            // Fetch the created plan to verify all objectives were saved
-            try {
-              const createdPlan = await plans.getById(result.data.id);
-              
-              if (createdPlan?.selected_objectives) {
-                const savedObjectivesCount = createdPlan.selected_objectives.length;
-                const submittedObjectivesCount = selectedObjectives.length;
-                
-                console.log(`Validation: Submitted ${submittedObjectivesCount} objectives, saved ${savedObjectivesCount} objectives`);
-                
-                if (savedObjectivesCount !== submittedObjectivesCount) {
-                  throw new Error(`Data integrity error: Submitted ${submittedObjectivesCount} objectives but only ${savedObjectivesCount} were saved`);
-                }
-                
-                // Validate that all objective IDs were saved
-                const savedObjectiveIds = createdPlan.selected_objectives.map(obj => obj.id || obj);
-                const submittedObjectiveIds = selectedObjectives.map(obj => obj.id);
-                
-                const missingSavedIds = submittedObjectiveIds.filter(id => !savedObjectiveIds.includes(id));
-                if (missingSavedIds.length > 0) {
-                  throw new Error(`Missing objectives in saved plan: ${missingSavedIds.join(', ')}`);
-                }
-                
-                console.log('✓ Plan validation successful - all objectives saved correctly');
-              }
-            } catch (validationError) {
-              console.error('Plan validation failed:', validationError);
-              throw new Error(`Plan was created but validation failed: ${validationError.message}`);
-            }
-          }
-          
-          // If we get here, submission was successful
-          console.log('=== PLAN SUBMISSION COMPLETED SUCCESSFULLY ===');
-          setShowSuccessModal(true);
-          return;
-          
-        } catch (attemptError) {
-          lastError = attemptError;
-          console.warn(`Submission attempt ${submitAttempt} failed:`, attemptError);
-          
-          if (submitAttempt < maxAttempts) {
-            // Wait before retry with exponential backoff
-            const waitTime = Math.min(2000 * Math.pow(2, submitAttempt - 1), 8000);
-            console.log(`Waiting ${waitTime}ms before retry...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            
-            // Refresh authentication before retry
-            try {
-              await auth.getCurrentUser();
-            } catch (authError) {
-              console.warn('Auth refresh failed before retry:', authError);
-            }
-          }
-        }
-      }
-      
-      // If all attempts failed, throw the last error
-      throw lastError || new Error('Plan submission failed after all attempts');
-      
-    } catch (error: any) {
-      console.error('=== PLAN SUBMISSION FAILED ===');
-      console.error('Submission error:', error);
-      
-      // Extract meaningful error message
-      let errorMessage = 'Failed to submit plan. Please try again.';
-      
-      if (error.response?.data) {
-        if (typeof error.response.data === 'string') {
-          errorMessage = error.response.data;
-        } else if (error.response.data.detail) {
-          errorMessage = error.response.data.detail;
-        } else if (error.response.data.message) {
-          errorMessage = error.response.data.message;
-        }
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      alert(`Submission failed: ${errorMessage}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleViewMyPlans = () => {
-    navigate('/dashboard', { 
-      state: { activeTab: 'submitted' },
-      replace: true 
-    });
-  };
-
-  const handleCreateNewPlan = () => {
-    // Reset all state to start fresh
-    setCurrentStep('plan-type');
-    setSelectedObjectives([]);
-    setSelectedObjective(null);
-    setSelectedProgram(null);
-    setSelectedInitiative(null);
-    setSelectedActivity(null);
-    setShowStatusModal(false);
-  };
-
-  // Don't render anything if user is not a planner
-  if (!isUserPlanner) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center p-8 bg-yellow-50 rounded-lg border border-yellow-200">
-          <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-yellow-700 mb-2">Access Restricted</h2>
-          <p className="text-yellow-600">You need planner permissions to access this page.</p>
-        </div>
-      </div>
-    );
-  }
-
+  // Main render
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Strategic Planning</h1>
-            <p className="text-gray-600">Create and manage your strategic plans</p>
-          </div>
-          
-          {currentStep === 'planning' && (
-            <div className="flex space-x-3">
-              <button
-                onClick={handlePreviewPlan}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-              >
-                <Eye className="h-4 w-4 mr-2" />
-                Preview Plan
-              </button>
-              <button
-                onClick={handleProceedToReview}
-                className="flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
-              >
-                Proceed to Review
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </button>
-            </div>
-          )}
+    <div className="px-4 py-6 sm:px-0">
+      {/* Error and Success Messages */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center text-red-700">
+          <AlertCircle className="h-5 w-5 mr-2" />
+          {error}
         </div>
+      )}
+
+      {success && (
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center text-green-700">
+          <CheckCircle className="h-5 w-5 mr-2" />
+          {success}
+        </div>
+      )}
+
+      {/* Step Navigation */}
+      <div className="mb-8">
+        <nav aria-label="Progress">
+          <ol className="flex items-center">
+            {[
+              { key: 'plan-type', label: 'Plan Type' },
+              { key: 'objective-selection', label: 'Objectives' },
+              { key: 'planning', label: 'Planning' },
+              { key: 'review', label: 'Review' }
+            ].map((step, index) => (
+              <li key={step.key} className={`${index !== 3 ? 'pr-8 sm:pr-20' : ''} relative`}>
+                <div className="flex items-center">
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${
+                    currentStep === step.key 
+                      ? 'border-green-600 bg-green-600 text-white' 
+                      : ['plan-type', 'objective-selection'].includes(step.key) && 
+                        ['objective-selection', 'planning', 'review'].includes(currentStep)
+                        ? 'border-green-600 bg-green-600 text-white'
+                        : 'border-gray-300 bg-white text-gray-500'
+                  }`}>
+                    <span className="text-sm font-medium">{index + 1}</span>
+                  </div>
+                  <span className={`ml-4 text-sm font-medium ${
+                    currentStep === step.key ? 'text-green-600' : 'text-gray-500'
+                  }`}>
+                    {step.label}
+                  </span>
+                </div>
+                {index !== 3 && (
+                  <div className="absolute top-4 left-4 -ml-px mt-0.5 h-full w-0.5 bg-gray-300" aria-hidden="true" />
+                )}
+              </li>
+            ))}
+          </ol>
+        </nav>
       </div>
 
-      <div className="space-y-6">
+      {/* Step Content */}
+      <div className="space-y-8">
         {/* Step 1: Plan Type Selection */}
         {currentStep === 'plan-type' && (
           <PlanTypeSelector onSelectPlanType={handlePlanTypeSelect} />
         )}
 
-        {/* Step 2: Objective Selection Mode */}
-        {currentStep === 'objective-mode' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <button
-                onClick={handleBack}
-                className="flex items-center text-gray-600 hover:text-gray-900"
-              >
-                <ArrowLeft className="h-5 w-5 mr-1" />
-                Back to Plan Type
-              </button>
-              <h2 className="text-xl font-semibold text-gray-900">Select Objective Mode</h2>
-              <div></div>
-            </div>
-            <ObjectiveSelectionMode onSelectMode={handleObjectiveModeSelect} />
-          </div>
-        )}
 
-        {/* Step 3: Objective Selection */}
-        {currentStep === 'objectives' && (
+        {/* Step 2: Objective Selection */}
+        {currentStep === 'objective-selection' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <button
@@ -1006,46 +1070,38 @@ const Planning: React.FC = () => {
                 className="flex items-center text-gray-600 hover:text-gray-900"
               >
                 <ArrowLeft className="h-5 w-5 mr-1" />
-                Back to Mode Selection
+                Back
               </button>
               <h2 className="text-xl font-semibold text-gray-900">
-                {objectiveSelectionMode === 'default' ? 'Select Default Objective' : 'Select Custom Objectives'}
+                Select Strategic Objectives
               </h2>
               <div></div>
             </div>
 
-            {objectiveSelectionMode === 'default' ? (
-              <HorizontalObjectiveSelector
-                onObjectivesSelected={handleObjectivesSelected}
-                onProceed={handleProceedToPlanning}
-                initialObjectives={selectedObjectives}
-              />
-            ) : (
-              <div className="space-y-6">
-                <CustomObjectiveSelector
-                  onObjectivesSelected={handleObjectivesSelected}
-                  initialObjectives={selectedObjectives}
-                />
-                
-                {selectedObjectives.length > 0 && (
-                  <div className="flex justify-end">
-                    <button
-                      onClick={handleProceedToPlanning}
-                      className="flex items-center px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700"
-                    >
-                      Proceed to Planning
-                      <ArrowRight className="h-4 w-4 ml-2" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+            <HorizontalObjectiveSelector
+              onObjectivesSelected={handleObjectivesSelected}
+              onProceed={handleProceedToPlanning}
+              initialObjectives={selectedObjectives}
+            />
           </div>
         )}
 
-        {/* Step 4: Planning */}
+        {/* Step 3: Planning Interface */}
         {currentStep === 'planning' && (
           <div className="space-y-6">
+            {/* Planning Header */}
+            <PlanningHeader
+              organizationName={userOrganization?.name || 'Unknown Organization'}
+              fromDate={fromDate}
+              toDate={toDate}
+              plannerName={plannerName}
+              planType={selectedPlanType}
+              onFromDateChange={setFromDate}
+              onToDateChange={setToDate}
+              onPlanTypeChange={setSelectedPlanType}
+            />
+
+            {/* Navigation and Actions */}
             <div className="flex items-center justify-between">
               <button
                 onClick={handleBack}
@@ -1054,95 +1110,33 @@ const Planning: React.FC = () => {
                 <ArrowLeft className="h-5 w-5 mr-1" />
                 Back to Objectives
               </button>
-              <h2 className="text-xl font-semibold text-gray-900">Strategic Planning</h2>
-              <div></div>
-            </div>
-
-            {/* Planning Header */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4 text-gray-500" />
-                      Organization
-                    </div>
-                  </label>
-                  <div className="mt-1 block w-full px-3 py-2 text-base border border-gray-300 rounded-md bg-gray-50">
-                    {getOrganizationName(userOrgId, organizationsData || [])}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-gray-500" />
-                      Planner Name
-                    </div>
-                  </label>
-                  <div className="mt-1 block w-full px-3 py-2 text-base border border-gray-300 rounded-md bg-gray-50">
-                    {plannerName}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    <div className="flex items-center gap-2">
-                      <FileType className="h-4 w-4 text-gray-500" />
-                      Plan Type
-                    </div>
-                  </label>
-                  <select
-                    value={selectedPlanType}
-                    onChange={(e) => setSelectedPlanType(e.target.value as PlanType)}
-                    className="mt-1 block w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="LEO/EO Plan">LEO/EO Plan</option>
-                    <option value="Desk/Team Plan">Desk/Team Plan</option>
-                    <option value="Individual Plan">Individual Plan</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="from-date" className="block text-sm font-medium text-gray-700 mb-1">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-gray-500" />
-                      From Date
-                    </div>
-                  </label>
-                  <input
-                    type="date"
-                    id="from-date"
-                    value={fromDate}
-                    onChange={(e) => setFromDate(e.target.value)}
-                    className="mt-1 block w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="to-date" className="block text-sm font-medium text-gray-700 mb-1">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-gray-500" />
-                      To Date
-                    </div>
-                  </label>
-                  <input
-                    type="date"
-                    id="to-date"
-                    value={toDate}
-                    onChange={(e) => setToDate(e.target.value)}
-                    min={fromDate}
-                    className="mt-1 block w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
+              
+              <div className="flex space-x-3">
+                {/* <button
+                  onClick={() => setShowPreviewModal(true)}
+                  className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  Preview Plan
+                </button> */}
+                <button
+                  onClick={handleReviewPlan}
+                  className="flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Review & Submit
+                </button>
               </div>
             </div>
 
-            {/* Three-column layout */}
+            {/* 3-Column Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left Column: Objectives */}
-              <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Selected Objectives</h3>
+              {/* Column 1: Selected Objectives */}
+              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                  <Target className="h-5 w-5 mr-2 text-blue-600" />
+                  Selected Objectives
+                </h3>
                 <StrategicObjectivesList
                   onSelectObjective={handleSelectObjective}
                   selectedObjectiveId={selectedObjective?.id}
@@ -1151,84 +1145,153 @@ const Planning: React.FC = () => {
                 />
               </div>
 
-              {/* Middle Column: Initiatives */}
-              <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">
-                  {selectedObjective ? `Initiatives for ${selectedObjective.title}` : 
-                   selectedProgram ? `Initiatives for ${selectedProgram.name}` : 
-                   'Select an Objective or Program'}
+              {/* Column 2: Initiatives */}
+              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                  <BarChart3 className="h-5 w-5 mr-2 text-green-600" />
+                  Strategic Initiatives
                 </h3>
-                
-                {selectedObjective || selectedProgram ? (
-                  <InitiativeList
-                    parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
-                    parentType={selectedObjective ? 'objective' : 'program'}
-                    parentWeight={selectedObjective ? 
-                      (selectedObjective.effective_weight !== undefined ? selectedObjective.effective_weight :
-                       selectedObjective.planner_weight !== undefined && selectedObjective.planner_weight !== null ? selectedObjective.planner_weight :
-                       selectedObjective.weight) : 
-                      (selectedProgram?.strategic_objective?.weight || 100)}
-                    selectedObjectiveData={selectedObjective}
-                    onEditInitiative={handleEditInitiative}
-                    onSelectInitiative={handleSelectInitiative}
-                    isNewPlan={true}
-                    planKey={refreshKey.toString()}
-                    isUserPlanner={isUserPlanner}
-                    userOrgId={userOrgId}
-                  />
+                {(selectedObjective || selectedProgram) ? (
+                  (() => {
+                    // Calculate the effective weight to pass to InitiativeList
+                    let effectiveWeight = 100; // Default fallback
+                    let selectedObjectiveData = null;
+                    
+                    if (selectedObjective) {
+                      // Find the selected objective in the selectedObjectives array to get the custom weight
+                      selectedObjectiveData = selectedObjectives.find(obj => obj.id === selectedObjective.id);
+                      
+                      console.log('Planning.tsx: Found selectedObjectiveData:', selectedObjectiveData);
+                      
+                      if (selectedObjectiveData) {
+                        // Use the weight from selectedObjectives array (which has custom weights)
+                        effectiveWeight = selectedObjectiveData.effective_weight !== undefined 
+                          ? selectedObjectiveData.effective_weight
+                          : selectedObjectiveData.planner_weight !== undefined && selectedObjectiveData.planner_weight !== null
+                            ? selectedObjectiveData.planner_weight
+                            : selectedObjectiveData.weight;
+                        
+                        console.log('Planning.tsx: Using custom weight from selectedObjectives:', effectiveWeight);
+                      } else {
+                        // Fallback to the selected objective's weight
+                        effectiveWeight = selectedObjective.effective_weight !== undefined 
+                          ? selectedObjective.effective_weight
+                          : selectedObjective.planner_weight !== undefined && selectedObjective.planner_weight !== null
+                            ? selectedObjective.planner_weight
+                            : selectedObjective.weight;
+                        
+                        console.log('Planning.tsx: Using fallback weight from selectedObjective:', effectiveWeight);
+                      }
+                      
+                      console.log('Planning.tsx - Weight calculation for InitiativeList:', {
+                        objectiveId: selectedObjective.id,
+                        objectiveTitle: selectedObjective.title,
+                        selectedObjectiveData: selectedObjectiveData ? 'found' : 'not found',
+                        originalWeight: selectedObjective.weight,
+                        plannerWeight: selectedObjective.planner_weight,
+                        effectiveWeightFromSelected: selectedObjectiveData?.effective_weight,
+                        finalEffectiveWeight: effectiveWeight
+                      });
+                    } else if (selectedProgram) {
+                      // For programs, also check if the parent objective is in selectedObjectives
+                      const parentObjective = selectedObjectives.find(obj => 
+                        obj.id === selectedProgram.strategic_objective_id || 
+                        obj.id === selectedProgram.strategic_objective?.id
+                      );
+                      
+                      if (parentObjective) {
+                        effectiveWeight = parentObjective.effective_weight !== undefined 
+                          ? parentObjective.effective_weight
+                          : parentObjective.planner_weight !== undefined && parentObjective.planner_weight !== null
+                            ? parentObjective.planner_weight
+                            : parentObjective.weight;
+                      } else {
+                        effectiveWeight = selectedProgram.strategic_objective?.effective_weight ||
+                                        selectedProgram.strategic_objective?.planner_weight ||
+                                        selectedProgram.strategic_objective?.weight || 100;
+                      }
+                    }
+                    
+                    return (
+                      <InitiativeList
+                        parentId={(selectedObjective?.id || selectedProgram?.id)?.toString() || ''}
+                        parentType={selectedObjective ? 'objective' : 'program'}
+                        parentWeight={effectiveWeight}
+                        selectedObjectiveData={selectedObjectiveData}
+                        onEditInitiative={handleEditInitiative}
+                        onSelectInitiative={handleSelectInitiative}
+                        planKey={`planning-${refreshKey}`}
+                        isUserPlanner={isUserPlanner}
+                        userOrgId={userOrgId}
+                      />
+                    );
+                  })()
                 ) : (
-                  <div className="text-center p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                    <Target className="h-6 w-6 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-500 text-sm">Select an objective or program to view initiatives</p>
+                  <div className="text-center p-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                    <BarChart3 className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-500">Select an objective to view initiatives</p>
                   </div>
                 )}
               </div>
 
-              {/* Right Column: Performance Measures and Main Activities */}
+              {/* Column 3: Performance Measures & Main Activities */}
               <div className="space-y-6">
                 {/* Performance Measures */}
-                <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">
-                    {selectedInitiative ? `Performance Measures for ${selectedInitiative.name}` : 'Select an Initiative'}
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                    <Activity className="h-5 w-5 mr-2 text-purple-600" />
+                    Performance Measures
                   </h3>
-                  
                   {selectedInitiative ? (
                     <PerformanceMeasureList
                       initiativeId={selectedInitiative.id}
-                      initiativeWeight={selectedInitiative.weight}
+                      initiativeWeight={Number(selectedInitiative.weight)}
                       onEditMeasure={handleEditMeasure}
                       onSelectMeasure={() => {}}
-                      isNewPlan={true}
-                      planKey={refreshKey.toString()}
+                      planKey={`planning-${refreshKey}`}
                     />
                   ) : (
                     <div className="text-center p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                      <BarChart3 className="h-6 w-6 text-gray-400 mx-auto mb-2" />
+                      <Activity className="h-6 w-6 text-gray-400 mx-auto mb-2" />
                       <p className="text-gray-500 text-sm">Select an initiative to view performance measures</p>
                     </div>
                   )}
                 </div>
 
                 {/* Main Activities */}
-                <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">
-                    {selectedInitiative ? `Main Activities for ${selectedInitiative.name}` : 'Select an Initiative'}
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                    <DollarSign className="h-5 w-5 mr-2 text-orange-600" />
+                    Main Activities
                   </h3>
-                  
                   {selectedInitiative ? (
-                    <MainActivityList
-                      initiativeId={selectedInitiative.id}
-                      initiativeWeight={selectedInitiative.weight}
-                      onEditActivity={handleEditActivity}
-                      onSelectActivity={handleSelectActivity}
-                      onAddBudget={handleAddBudget}
-                      onViewBudget={handleViewBudget}
-                      onEditBudget={handleEditBudget}
-                      isNewPlan={true}
-                      planKey={refreshKey.toString()}
-                      isUserPlanner={isUserPlanner}
-                      userOrgId={userOrgId}
-                    />
+                    <div className="space-y-4">
+                      <MainActivityList
+                        initiativeId={selectedInitiative.id}
+                        initiativeWeight={Number(selectedInitiative.weight)}
+                        onEditActivity={handleEditActivity}
+                        onSelectActivity={() => {}}
+                        onAddBudget={handleAddBudget}
+                        onEditBudget={handleEditBudget}
+                        onViewBudget={handleViewBudget}
+                        planKey={`planning-${refreshKey}`}
+                        isUserPlanner={isUserPlanner}
+                        userOrgId={userOrgId}
+                      />
+                      
+                      {/* Create Main Activity Button */}
+                      {isUserPlanner && (
+                        <div className="text-center pt-4">
+                          <button 
+                            onClick={() => handleEditActivity({})}
+                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Main Activity
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <div className="text-center p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
                       <DollarSign className="h-6 w-6 text-gray-400 mx-auto mb-2" />
@@ -1241,7 +1304,7 @@ const Planning: React.FC = () => {
           </div>
         )}
 
-        {/* Step 5: Review */}
+        {/* Step 4: Review */}
         {currentStep === 'review' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -1260,7 +1323,7 @@ const Planning: React.FC = () => {
               objectives={selectedObjectives}
               onSubmit={handleSubmitPlan}
               isSubmitting={isSubmitting}
-              organizationName={getOrganizationName(userOrgId, organizationsData || [])}
+              organizationName={userOrganization?.name || 'Unknown Organization'}
               plannerName={plannerName}
               fromDate={fromDate}
               toDate={toDate}
@@ -1272,13 +1335,6 @@ const Planning: React.FC = () => {
       </div>
 
       {/* Modals and Forms */}
-      
-      {/* Budget Calculation Type Selection Modal */}
-      <BudgetCalculationModal
-        isOpen={showBudgetCalculationModal}
-        onClose={() => setShowBudgetCalculationModal(false)}
-        onSelectCalculationType={handleSelectBudgetCalculationType}
-      />
       
       {/* Initiative Form Modal */}
       {showInitiativeForm && (selectedObjective || selectedProgram) && (
@@ -1447,7 +1503,7 @@ const Planning: React.FC = () => {
         isOpen={showPreviewModal}
         onClose={() => setShowPreviewModal(false)}
         objectives={selectedObjectives}
-        organizationName={getOrganizationName(userOrgId, organizationsData || [])}
+        organizationName={userOrganization?.name || 'Unknown Organization'}
         plannerName={plannerName}
         fromDate={fromDate}
         toDate={toDate}
