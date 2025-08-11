@@ -527,9 +527,7 @@ const Planning: React.FC = () => {
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <Building2 className="h-12 w-12 text-gray-400 mb-4" />
         <h3 className="text-lg font-medium text-gray-800 mb-2">No Organization Access</h3>
-        <p className="text-gray-600 mb-4">
-          You don't have access to any organization for planning.
-        </p>
+        <p className="text-gray-600 mb-4">You don't have access to any organization for planning.</p>
         <button
           onClick={() => navigate('/dashboard')}
           className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
