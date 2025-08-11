@@ -232,26 +232,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     
     fetchOrganizations();
   }, []);
-
-  // Get user organization ID for filtering
-  const [userOrgId, setUserOrgId] = useState<number | null>(null);
-
-  useEffect(() => {
-    const fetchUserOrgId = async () => {
-      try {
-        const authData = await auth.getCurrentUser();
-        if (authData.userOrganizations && authData.userOrganizations.length > 0) {
-          const orgId = authData.userOrganizations[0].organization;
-          setUserOrgId(orgId);
-          console.log('PlanReviewTable: User organization ID set to:', orgId);
-        }
-      } catch (error) {
-        console.error('Failed to fetch user organization ID:', error);
-      }
-    };
-    
-    fetchUserOrgId();
-  }, []);
   // Enhanced data fetching for production
   const fetchCompleteData = async (objectivesList: any[]) => {
     if (!objectivesList || objectivesList.length === 0) {
@@ -294,8 +274,8 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           const shouldInclude = isDefault || belongsToUserOrg;
           
           // Additional check: If initiative has an organization and it's NOT the current user's, exclude it
-          if (initiative.organization && initiative.organization !== currentUserOrgId && !isDefault) {
-            console.log(`EXCLUDING Initiative "${initiative.name}": belongs to org ${initiative.organization}, not current org ${currentUserOrgId}`);
+          if (initiative.organization && initiative.organization !== userOrgId && !isDefault) {
+            console.log(`EXCLUDING Initiative "${initiative.name}": belongs to org ${initiative.organization}, not current org ${userOrgId}`);
             return false;
           }
           
@@ -337,8 +317,8 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
               const shouldInclude = belongsToUserOrg || hasNoOrg;
               
               // Additional check: If measure has an organization and it's NOT the current user's, exclude it
-              if (measure.organization && measure.organization !== currentUserOrgId) {
-                console.log(`EXCLUDING Measure "${measure.name}": belongs to org ${measure.organization}, not current org ${currentUserOrgId}`);
+              if (measure.organization && measure.organization !== userOrgId) {
+                console.log(`EXCLUDING Measure "${measure.name}": belongs to org ${measure.organization}, not current org ${userOrgId}`);
                 return false;
               }
               
@@ -355,8 +335,8 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
               const shouldInclude = belongsToUserOrg || hasNoOrg;
               
               // Additional check: If activity has an organization and it's NOT the current user's, exclude it
-              if (activity.organization && activity.organization !== currentUserOrgId) {
-                console.log(`EXCLUDING Activity "${activity.name}": belongs to org ${activity.organization}, not current org ${currentUserOrgId}`);
+              if (activity.organization && activity.organization !== userOrgId) {
+                console.log(`EXCLUDING Activity "${activity.name}": belongs to org ${activity.organization}, not current org ${userOrgId}`);
                 return false;
               }
               
