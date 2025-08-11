@@ -650,13 +650,14 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900 max-w-xs">
                     <div className="flex items-center">
-                      {row.itemType === 'Performance Measure' && (
+                      {row.itemType === 'Performance Measure' ? (
                         <BarChart3 className="h-4 w-4 text-purple-600 mr-2 flex-shrink-0" title="Performance Measure" />
-                      )}
-                      {row.itemType === 'Main Activity' && (
+                      ) : row.itemType === 'Main Activity' ? (
                         <Activity className="h-4 w-4 text-green-600 mr-2 flex-shrink-0" title="Main Activity" />
+                      ) : (
+                        <Target className="h-4 w-4 text-blue-600 mr-2 flex-shrink-0" title="Objective/Initiative" />
                       )}
-                      <div className="truncate" title={row.displayName || row.itemName}>{row.displayName || row.itemName}</div>
+                      <div className="truncate" title={row.itemName}>{row.itemName}</div>
                     </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
