@@ -214,7 +214,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       console.log('PlanReviewTable: Dependencies changed, triggering refresh');
       handleManualRefresh();
     }
-  }, [effectiveUserOrgId]);
+  }, [effectiveUserOrgId, objectives.length]);
 
   // Remove the old data fetching logic and replace with new comprehensive approach
   // Create a query key that includes all initiative IDs to fetch fresh data
