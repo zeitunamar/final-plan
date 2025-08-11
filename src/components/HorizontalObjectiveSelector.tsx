@@ -221,144 +221,52 @@ const HorizontalObjectiveSelector: React.FC<HorizontalObjectiveSelectorProps> = 
     setValidationError(null);
     
     try {
-      console.log('=== SAVING OBJECTIVE WEIGHTS ===');
-      console.log('Selected objectives before save:', selectedObjectives.map(obj => ({
-        id: obj.id,
-        title: obj.title,
-        weight: obj.weight,
-        planner_weight: obj.planner_weight,
-        effective_weight: obj.effective_weight,
-        newWeight: objectiveWeights[obj.id]
-      })));
-      
-      // Clear any existing planner_weight values from objectives not selected
-      try {
-        const allObjectives = await objectives.getAll();
-        const allObjectiveIds = allObjectives?.data?.map(obj => obj.id) || [];
-        const selectedObjectiveIds = selectedObjectives.map(obj => obj.id);
-        const unselectedObjectiveIds = allObjectiveIds.filter(id => !selectedObjectiveIds.includes(id));
-        
-        console.log('Clearing planner_weight for unselected objectives:', unselectedObjectiveIds.length);
-        
-        // Clear planner_weight for unselected objectives
-        for (const objId of unselectedObjectiveIds) {
-          try {
-            const objectiveData = {
-              id: objId,
-              planner_weight: null, // Clear the planner weight
-            };
-            await updateObjectiveMutation.mutateAsync(objectiveData);
-          } catch (err) {
-            console.warn(`Failed to clear planner_weight for objective ${objId}:`, err);
-            // Continue with other objectives even if one fails
-          }
-        }
-      } catch (err) {
-        console.warn("Failed to clear unselected objectives:", err);
-        // Continue anyway - this is not critical
-      }
-      
       // Ensure we have a fresh CSRF token before making multiple API calls
       try {
         await auth.getCurrentUser();
       } catch (err) {
-        console.warn("Failed to refresh CSRF token:", err);
+        console.warn("Failed to refresh auth:", err);
         // Continue anyway - the API client should retry if needed
       }
       
-      // Save each objective's weight to the database with better error handling
-      const savePromises = selectedObjectives.map(async (obj, index) => {
+      // Save each objective's weight to the database
+      for (const obj of selectedObjectives) {
         const newWeight = objectiveWeights[obj.id];
-        const originalEffectiveWeight = getEffectiveWeight(obj);
         
-        console.log(`Saving objective ${index + 1}/${selectedObjectives.length}: ${obj.title} (ID: ${obj.id}) with weight ${newWeight}`);
-        
-        // Always save the planner weight for default objectives if they're selected
+        // Save planner weight for default objectives
         if (obj.is_default) {
           const objectiveData = {
             id: obj.id,
             planner_weight: newWeight,
-            // Include these fields to ensure they're not lost in the update
             title: obj.title,
             description: obj.description,
             weight: obj.weight,
             is_default: obj.is_default,
           };
 
-          try {
-            const result = await updateObjectiveMutation.mutateAsync(objectiveData);
-            console.log(`✓ Saved default objective ${obj.id} with planner_weight ${newWeight}`);
-            return result;
-          } catch (error) {
-            console.error(`✗ Failed to save default objective ${obj.id}:`, error);
-            throw error;
-          }
+          await updateObjectiveMutation.mutateAsync(objectiveData);
         }
-        
-        // For non-default objectives, update the weight directly
-        if (!obj.is_default) {
+        else {
+          // For custom objectives, update weight directly
           const objectiveData = {
             id: obj.id,
             weight: newWeight,
-            planner_weight: null, // Custom objectives don't use planner_weight
-            // Include these fields to ensure they're not lost in the update
             title: obj.title,
             description: obj.description,
             is_default: obj.is_default
           };
 
-          try {
-            const result = await updateObjectiveMutation.mutateAsync(objectiveData);
-            console.log(`✓ Saved custom objective ${obj.id} with weight ${newWeight}`);
-            return result;
-          } catch (error) {
-            console.error(`✗ Failed to save custom objective ${obj.id}:`, error);
-            throw error;
-          }
+          await updateObjectiveMutation.mutateAsync(objectiveData);
         }
-
-        console.log(`No update needed for objective ${obj.id}`);
-        return Promise.resolve();
-      });
-      
-      try {
-        console.log('Waiting for all objective saves to complete...');
-        // Wait for all saves to complete
-        await Promise.all(savePromises);
-        console.log('✓ All objective weights saved successfully');
-        
-        // Refresh objectives data to get updated weights
-        await queryClient.invalidateQueries({ queryKey: ['objectives'] });
-        console.log('✓ Objectives cache invalidated');
-        
-        // Now proceed to planning with the user's chosen weights
-        console.log('=== PROCEEDING TO PLANNING ===');
-        onProceed();
-      } catch (err) {
-        console.error('=== OBJECTIVE SAVE FAILED ===');
-        console.error('Error saving objectives:', err);
-        setValidationError(`Failed to save objective weights: ${err.message || 'Unknown error'}. Please try again.`);
-        throw err;
       }
+      
+      // Refresh cache and proceed
+      await queryClient.invalidateQueries({ queryKey: ['objectives'] });
+      onProceed();
+      
     } catch (error) {
-      console.error('=== WEIGHT SAVE PROCESS FAILED ===');
       console.error('Weight save error:', error instanceof Error ? error.message : error);
-      
-      // Extract more detailed error message
-      let errorMessage = 'Failed to save objective weights. Please try again.';
-      if (error.response?.data) {
-        if (typeof error.response.data === 'string') {
-          errorMessage = error.response.data;
-        } else if (error.response.data.detail) {
-          errorMessage = error.response.data.detail;
-        } else if (error.response.data.message) {
-          errorMessage = error.response.data.message;
-        }
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      setValidationError(errorMessage);
+      setValidationError('Failed to save objective weights. Please try again.');
     } finally {
       setIsSavingWeights(false);
     }
