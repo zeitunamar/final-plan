@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Target, Plus, Edit, Trash2, Eye, DollarSign, Send, ArrowLeft, AlertCircle, CheckCircle, Info, Loader, Building2, User, Calendar, FileType, RefreshCw, BarChart3, Clock } from 'lucide-react';
+import { 
   ArrowLeft, 
   ArrowRight, 
   CheckCircle, 
@@ -29,6 +29,7 @@ import type { PlanType, ActivityType, BudgetCalculationType } from '../types/pla
 // Import components
 import PlanTypeSelector from '../components/PlanTypeSelector';
 import ObjectiveSelectionMode from '../components/ObjectiveSelectionMode';
+import HorizontalObjectiveSelector from '../components/HorizontalObjectiveSelector';
 import CustomObjectiveSelector from '../components/CustomObjectiveSelector';
 import StrategicObjectivesList from '../components/StrategicObjectivesList';
 import InitiativeList from '../components/InitiativeList';
@@ -236,14 +237,6 @@ const BudgetCalculationModal: React.FC<{
   );
 };
 
-// Plan status steps for progress indicator
-const PLAN_STEPS = [
-  { key: 'type', label: 'Plan Type', icon: FileType },
-  { key: 'objectives', label: 'Objectives', icon: Target },
-  { key: 'planning', label: 'Planning', icon: BarChart3 },
-  { key: 'review', label: 'Review', icon: CheckCircle }
-];
-
 const Planning: React.FC = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -260,11 +253,12 @@ const Planning: React.FC = () => {
   // State management
   const [currentStep, setCurrentStep] = useState<'plan-type' | 'objective-mode' | 'objectives' | 'planning' | 'review'>('plan-type');
   const [selectedPlanType, setSelectedPlanType] = useState<PlanType>('LEO/EO Plan');
-  const [currentStep, setCurrentStep] = useState<'type' | 'objectives' | 'planning' | 'review'>('type');
+  const [objectiveSelectionMode, setObjectiveSelectionMode] = useState<'default' | 'custom'>('default');
   const [selectedObjectives, setSelectedObjectives] = useState<StrategicObjective[]>([]);
   const [selectedObjective, setSelectedObjective] = useState<StrategicObjective | null>(null);
   const [selectedProgram, setSelectedProgram] = useState<any>(null);
   const [selectedInitiative, setSelectedInitiative] = useState<any>(null);
+  const [selectedActivity, setSelectedActivity] = useState<any>(null);
   
   // Form states
   const [showInitiativeForm, setShowInitiativeForm] = useState(false);
@@ -274,6 +268,7 @@ const Planning: React.FC = () => {
   const [showBudgetDetails, setShowBudgetDetails] = useState(false);
   const [showCostingTool, setShowCostingTool] = useState(false);
   const [showBudgetCalculationModal, setShowBudgetCalculationModal] = useState(false);
+  
   // Edit states
   const [editingInitiative, setEditingInitiative] = useState<any>(null);
   const [editingMeasure, setEditingMeasure] = useState<any>(null);
@@ -321,39 +316,9 @@ const Planning: React.FC = () => {
   });
 
   // Fetch organizations data
-  const { data: organizationsData, isLoading: isLoadingOrgs, error: orgsError } = useQuery({
+  const { data: organizationsData } = useQuery({
     queryKey: ['organizations'],
-    queryFn: async () => {
-      try {
-        const response = await organizations.getAll();
-        return response;
-      } catch (error) {
-        console.error('Error fetching organizations:', error);
-        throw error;
-      }
-    },
-    retry: 2,
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
-
-  // Fetch objectives with performance optimization
-  const { data: objectivesData, isLoading: isLoadingObjectivesData } = useQuery({
-    queryKey: ['objectives', 'planning'],
-    queryFn: async () => {
-      try {
-        setIsLoadingObjectives(true);
-        const response = await objectives.getAll();
-        return response;
-      } catch (error) {
-        console.error('Error fetching objectives:', error);
-        throw error;
-      } finally {
-        setIsLoadingObjectives(false);
-      }
-    },
-    enabled: !!authData?.isAuthenticated,
-    retry: 2,
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    queryFn: () => organizations.getAll(),
   });
 
   // Check authentication and user permissions
@@ -444,14 +409,19 @@ const Planning: React.FC = () => {
   };
 
   // Event handlers
-    // Skip objective mode selection and go directly to custom objectives
+  const handlePlanTypeSelect = (type: PlanType) => {
+    setSelectedPlanType(type);
+    setCurrentStep('objective-mode');
+  };
+
+  const handleObjectiveModeSelect = (mode: 'default' | 'custom') => {
+    setObjectiveSelectionMode(mode);
     setCurrentStep('objectives');
   };
 
   const handleObjectivesSelected = (objectives: StrategicObjective[]) => {
     console.log('Planning: Objectives selected:', objectives.length);
     setSelectedObjectives(objectives);
-    setIsLoadingObjectives(false);
     
     if (objectives.length > 0) {
       // Auto-select the first objective for planning
@@ -587,10 +557,10 @@ const Planning: React.FC = () => {
   };
 
   // Handle budget deletion
-  const handleDeleteBudget = async (budgetId: string) => {
+  const handleDeleteBudget = async (activityId: string) => {
     try {
-      console.log('Deleting budget with ID:', budgetId);
-      await activityBudgets.delete(budgetId);
+      console.log('Deleting budget for activity:', activityId);
+      await activityBudgets.deleteByActivity(activityId);
       
       // Find the activity and its budget
       let budgetToDelete = null;
@@ -637,7 +607,7 @@ const Planning: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['activity-budgets'] });
       
       // Show success message
-      console.log('Budget deleted successfully with ID:', budgetId);
+      setSuccessMessage('Budget deleted successfully');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (error) {
       console.error('Error deleting budget:', error);
@@ -760,18 +730,6 @@ const Planning: React.FC = () => {
     if (!userOrgId || selectedObjectives.length === 0) {
       alert('Please select objectives before submitting the plan');
       return;
-      
-      // Validate total weight is exactly 100%
-      const totalWeight = selectedObjectives.reduce((sum, obj) => {
-        const effectiveWeight = obj.effective_weight || obj.planner_weight || obj.weight;
-        return sum + effectiveWeight;
-      }, 0);
-      
-      if (Math.abs(totalWeight - 100) >= 0.01) {
-        setSubmitError(`Total objective weight must be exactly 100%. Current: ${totalWeight.toFixed(2)}%`);
-        setIsSubmittingPlan(false);
-        return;
-      }
     }
 
     setIsSubmitting(true);
@@ -830,9 +788,6 @@ const Planning: React.FC = () => {
         }, {} as Record<string, number>)
       };
 
-      console.log('Submitting plan with data:', planData);
-      console.log('Selected objectives weights:', selectedObjectivesWeights);
-      
       console.log('Plan data prepared for submission:', {
         ...planData,
         selected_objectives_count: planData.selected_objectives.length,
@@ -976,11 +931,6 @@ const Planning: React.FC = () => {
   };
 
   // Don't render anything if user is not a planner
-  // Get current step index for progress indicator
-  const getCurrentStepIndex = () => {
-    return PLAN_STEPS.findIndex(step => step.key === currentStep);
-  };
-
   if (!isUserPlanner) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -993,77 +943,32 @@ const Planning: React.FC = () => {
     );
   }
 
-  if (orgsError) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-        <h3 className="text-lg font-medium text-red-800 mb-2">Error Loading Organizations</h3>
-        <p className="text-red-600 mb-4">Failed to load organization data</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200"
-        >
-          Reload Page
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-        
-        {/* Progress Indicator */}
-        <div className="mt-4">
-          <div className="flex items-center justify-between">
-            {PLAN_STEPS.map((step, index) => {
-              const StepIcon = step.icon;
-              const isActive = index === getCurrentStepIndex();
-              const isCompleted = index < getCurrentStepIndex();
-              
-              return (
-                <div key={step.key} className="flex items-center">
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${
-                    isActive 
-                      ? 'border-blue-600 bg-blue-600 text-white' 
-                      : isCompleted 
-                        ? 'border-green-600 bg-green-600 text-white'
-                        : 'border-gray-300 bg-white text-gray-400'
-                  }`}>
-                    <StepIcon className="h-4 w-4" />
-                  </div>
-                  <span className={`ml-2 text-sm font-medium ${
-                    <div className={`ml-4 w-16 h-0.5 ${
-                      isCompleted ? 'bg-green-600' : 'bg-gray-300'
-                    }`} />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
             <h1 className="text-2xl font-bold text-gray-900">Strategic Planning</h1>
             <p className="text-gray-600">Create and manage your strategic plans</p>
           </div>
           
-
-          {(isLoadingObjectives || isSavingWeights) && (
-            <div className="flex items-center justify-center p-8 bg-blue-50 rounded-lg border border-blue-200">
-              <Loader className="h-6 w-6 animate-spin mr-3 text-blue-600" />
-              <div className="text-blue-700">
-                {isSavingWeights ? 'Saving objective weights...' : 'Loading objectives...'}
-              </div>
+          {currentStep === 'planning' && (
+            <div className="flex space-x-3">
+              <button
+                onClick={handlePreviewPlan}
+                className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Preview Plan
+              </button>
+              <button
+                onClick={handleProceedToReview}
+                className="flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+              >
+                Proceed to Review
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </button>
             </div>
-          )}
-
-          {!isLoadingObjectives && !isSavingWeights && (
-            <HorizontalObjectiveSelector
-              onObjectivesSelected={handleObjectiveSelectionWithSave}
-              onProceed={handleProceedToPlanning}
-              initialObjectives={selectedObjectives}
-            />
           )}
         </div>
       </div>
