@@ -205,8 +205,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [loadingProgress, setLoadingProgress] = useState('');
   const [retryCount, setRetryCount] = useState(0);
-  const [currentUserOrgId, setCurrentUserOrgId] = useState<number | null>(null);
-  const [authLoaded, setAuthLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // Fetch organizations for mapping IDs to names
@@ -245,30 +243,31 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         // First try to get from userOrgId prop
         if (userOrgId) {
           console.log('Using userOrgId prop:', userOrgId);
-          setPlannerOrgId(userOrgId);
-          setIsAuthLoaded(true);
-  // Fetch current user's organization ID if not provided via props - with timeout
+          setCurrentUserOrgId(userOrgId);
+          setAuthLoaded(true);
+          return;
         }
         
         // Try to get from plan data
         console.log('PlanReviewTable: Using provided userOrgId:', userOrgId);
         if (planData?.organization) {
           console.log('Using plan organization:', planData.organization);
-          setPlannerOrgId(Number(planData.organization));
-          setIsAuthLoaded(true);
+          setCurrentUserOrgId(Number(planData.organization));
+          setAuthLoaded(true);
           return;
         }
         
         // Fallback to current user's organization
+        const authData = await auth.getCurrentUser();
         if (authData.userOrganizations?.length > 0) {
           const orgId = authData.userOrganizations[0].organization;
           console.log('Using current user organization:', orgId);
-          setPlannerOrgId(orgId);
+          setCurrentUserOrgId(orgId);
         }
       } catch (error) {
         console.error('Failed to get planner organization context:', error);
       } finally {
-        setIsAuthLoaded(true);
+        setAuthLoaded(true);
       }
     };
     
@@ -283,7 +282,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     }
 
     console.log('=== PROCESSING PLAN OBJECTIVES FOR PLANNER ORG ===');
-    console.log('Planner Organization ID:', plannerOrgId);
+    console.log('Planner Organization ID:', currentUserOrgId);
     console.log('Raw objectives received:', objectives?.length || 0);
 
     // Use the plan's selected objectives (these should already be filtered)
@@ -302,13 +301,13 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       // Filter initiatives to ONLY show planner's organization data
       const plannerInitiatives = (objective.initiatives || []).filter(initiative => {
         const isDefault = initiative.is_default === true;
-        const belongsToPlanner = Number(initiative.organization) === Number(plannerOrgId);
+        const belongsToPlanner = Number(initiative.organization) === Number(currentUserOrgId);
         const hasNoOrg = !initiative.organization;
         
         // STRICT: Only include if it's default OR belongs to planner's organization
         const shouldInclude = isDefault || belongsToPlanner || hasNoOrg;
         
-        console.log(`Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, plannerOrg=${plannerOrgId}, belongsToPlanner=${belongsToPlanner}, shouldInclude=${shouldInclude}`);
+        console.log(`Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, plannerOrg=${currentUserOrgId}, belongsToPlanner=${belongsToPlanner}, shouldInclude=${shouldInclude}`);
         
         return shouldInclude;
       });
@@ -317,21 +316,21 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       const processedInitiatives = plannerInitiatives.map(initiative => {
         // Filter performance measures
         const plannerMeasures = (initiative.performance_measures || []).filter(measure => {
-          const belongsToPlanner = Number(measure.organization) === Number(plannerOrgId);
+          const belongsToPlanner = Number(measure.organization) === Number(currentUserOrgId);
           const hasNoOrg = !measure.organization;
           const shouldInclude = belongsToPlanner || hasNoOrg;
           
-          console.log(`Measure "${measure.name}": org=${measure.organization}, plannerOrg=${plannerOrgId}, shouldInclude=${shouldInclude}`);
+          console.log(`Measure "${measure.name}": org=${measure.organization}, plannerOrg=${currentUserOrgId}, shouldInclude=${shouldInclude}`);
           return shouldInclude;
         });
 
         // Filter main activities
         const plannerActivities = (initiative.main_activities || []).filter(activity => {
-          const belongsToPlanner = Number(activity.organization) === Number(plannerOrgId);
+          const belongsToPlanner = Number(activity.organization) === Number(currentUserOrgId);
           const hasNoOrg = !activity.organization;
           const shouldInclude = belongsToPlanner || hasNoOrg;
           
-          console.log(`Activity "${activity.name}": org=${activity.organization}, plannerOrg=${plannerOrgId}, shouldInclude=${shouldInclude}`);
+          console.log(`Activity "${activity.name}": org=${activity.organization}, plannerOrg=${currentUserOrgId}, shouldInclude=${shouldInclude}`);
           return shouldInclude;
         });
 
@@ -351,7 +350,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
     console.log('Final processed objectives:', filteredObjectives.length);
     setProcessedObjectives(filteredObjectives);
-  }, [objectives, plannerOrgId, isAuthLoaded]);
+  }, [objectives, currentUserOrgId, authLoaded]);
 
   // Fetch organizations for mapping names
   useEffect(() => {
@@ -723,30 +722,10 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
             const activitiesCount = obj.initiatives?.reduce((sum, init) => sum + (init.main_activities?.length || 0), 0) || 0;
             console.log(`PlanReviewTable Filtered Objective ${index + 1}: ${obj.title} - ${initiativesCount} initiatives, ${measuresCount} measures, ${activitiesCount} activities`);
           });
-        // Add timeout to prevent infinite loading
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Authentication timeout')), 5000)
-        );
-        
-        const authPromise = auth.getCurrentUser();
-        
-        const authData = await Promise.race([authPromise, timeoutPromise]);
-        
-        if (authData && authData.userOrganizations && authData.userOrganizations.length > 0) {
-          const orgId = authData.userOrganizations[0].organization;
-          setCurrentUserOrgId(orgId);
-        // Use provided userOrgId or fallback to currentUserOrgId
-        const effectiveUserOrgId = userOrgId || currentUserOrgId;
-        console.log('PlanReviewTable: Using effective user org ID:', effectiveUserOrgId);
-        
-          console.log('PlanReviewTable: Set user organization ID from auth:', orgId);
-        } else {
-          console.log('PlanReviewTable: No user organizations found in auth data');
-          setCurrentUserOrgId(null);
-        }
+          
+          setProcessedObjectives(strictlyFilteredObjectives);
           return;
         }
-        // In case of auth failure, try to continue without strict org filtering
       }
       
       // Only fetch data if not in preview/view mode
@@ -758,50 +737,22 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
       // Wait for userOrgId to be available before processing
       if (!currentUserOrgId) {
-  // Fetch organizations data for mapping - with fallback
         return;
       }
+      
       try {
         setIsLoading(true);
-        // Add timeout for organizations fetch too
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Organizations fetch timeout')), 3000)
-        );
         
-        const orgsPromise = organizations.getAll();
-        
-        try {
         // If we have plan data with objectives, use that
         if (planData?.objectives && Array.isArray(planData.objectives)) {
           console.log('PlanReviewTable: Using plan objectives data:', planData.objectives.length);
           setProcessedObjectives(planData.objectives);
-          setIsProcessing(false);
+          setIsLoading(false);
           return;
         }
         
-          const response = await Promise.race([orgsPromise, timeoutPromise]);
-          const orgMap: Record<string, string> = {};
-          
-          if (response && Array.isArray(response)) {
-            response.forEach((org: any) => {
-              if (org && org.id) {
-                orgMap[org.id] = org.name;
-              }
-            });
-          } else if (response?.data && Array.isArray(response.data)) {
-        // ABSOLUTE FILTERING: Only show data from the planner's organization
-              if (org && org.id) {
-                orgMap[org.id] = org.name;
-              }
-            });
-          }
-          
-          // Filter initiatives to ONLY include planner's organization or defaults
-          console.log('PlanReviewTable: Organizations map created:', Object.keys(orgMap).length);
-        } catch (fetchError) {
-          console.warn('PlanReviewTable: Failed to fetch organizations, continuing without mapping:', fetchError);
-          setOrganizationsMap({});
-        }
+        // On error, just use the provided objectives
+        setProcessedObjectives(objectives);
       } catch (error) {
         console.error('Error loading plan data:', error);
         if (isMounted) {
@@ -811,8 +762,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         if (isMounted) {
           setIsLoading(false);
         }
-        // Continue without organization mapping
-        setOrganizationsMap({});
       }
     };
 
@@ -821,7 +770,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [objectives, currentUserOrgId, retryCount, isPreviewMode, isViewOnly]);
+  }, [objectives, currentUserOrgId, authLoaded, planData, userOrgId]);
 
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);
@@ -888,15 +837,13 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       processedObjectives.forEach((objective: any) => {
         objective?.initiatives?.forEach((initiative: any) => {
           initiative?.main_activities?.forEach((activity: any) => {
-            const belongsToUserOrg = Number(initiative.organization) === Number(effectiveUserOrgId);
-            
             const cost = activity.budget.budget_calculation_type === 'WITH_TOOL' 
               ? Number(activity.budget.estimated_cost_with_tool || 0) 
               : Number(activity.budget.estimated_cost_without_tool || 0);
             
             total += cost;
             governmentTotal += Number(activity.budget.government_treasury || 0);
-              `plannerOrg=${effectiveUserOrgId}, hasNoOrg=${hasNoOrg}, shouldInclude=${shouldInclude}`);
+            sdgTotal += Number(activity.budget.sdg_funding || 0);
             partnersTotal += Number(activity.budget.partners_funding || 0);
             otherTotal += Number(activity.budget.other_funding || 0);
           });
@@ -913,8 +860,18 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   const totalAvailable = budgetTotals.governmentTotal + budgetTotals.sdgTotal + budgetTotals.partnersTotal + budgetTotals.otherTotal;
   const fundingGap = Math.max(0, budgetTotals.total - totalAvailable);
 
+  // Wait for authentication to load only if we don't have userOrgId
+  if (!authLoaded && !userOrgId) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+        <span className="ml-3 text-gray-600">Loading organization data...</span>
+      </div>
+    );
+  }
+
   // Show loading state while fetching user organization or processing data
-  if (isLoading || (!authLoaded && !userOrgId)) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
@@ -1265,7 +1222,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                                (item.organization_name) ||
                                (item.organization && organizationsMap && organizationsMap[item.organization]) ||
                                'Ministry of Health'}
-                `org=${measure.organization}, plannerOrg=${effectiveUserOrgId}, shouldInclude=${shouldInclude}`);
+                            </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(budgetRequired)}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(government)}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(partners)}</td>
@@ -1273,14 +1230,14 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(other)}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(totalAvailable)}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(gap)}</td>
-              const belongsToUserOrg = Number(activity.organization) === Number(effectiveUserOrgId);
+                          </tr>
                         );
                         currentRow++;
                       });
                     }
-                `org=${activity.organization}, plannerOrg=${effectiveUserOrgId}, shouldInclude=${shouldInclude}`);
+                  });
                 }
-              const belongsToUserOrg = Number(measure.organization) === Number(effectiveUserOrgId);
+
                 return rows;
               })}
               
@@ -1300,18 +1257,16 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
                   {formatCurrency(budgetTotals.sdgTotal)}
-        // On error, just use the provided objectives
-        setProcessedObjectives(objectives);
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
                   {formatCurrency(budgetTotals.otherTotal)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
                   {formatCurrency(totalAvailable)}
-  }, [objectives, currentUserOrgId, authLoaded, planData, userOrgId]);
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-  // Wait for authentication to load only if we don't have userOrgId
-  if (!authLoaded && !userOrgId) {
+                  {formatCurrency(fundingGap)}
+                </td>
               </tr>
             </tbody>
           </table>
