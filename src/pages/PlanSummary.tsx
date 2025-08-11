@@ -309,10 +309,8 @@ const PlanSummary: React.FC = () => {
     objectives.forEach((objective, objIndex) => {
       if (!objective) return;
       
-      // Calculate objective weight by summing initiative weights (same as table)
-      const calculatedWeight = objective.initiatives?.reduce((sum, initiative) => {
-        return sum + (Number(initiative.weight) || 0);
-      }, 0) || 0;
+      // Get objective weight directly from database (effective_weight, planner_weight, or weight)
+      const objectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
       
       let objectiveAdded = false;
       
@@ -322,8 +320,11 @@ const PlanSummary: React.FC = () => {
           No: objIndex + 1,
           'Strategic Objective': objective.title || 'Untitled Objective',
           'Strategic Objective Weight': `${calculatedWeight.toFixed(1)}%`,
-        // Get objective weight directly from database (effective_weight, planner_weight, or weight)
-        const objectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
+          'Strategic Objective Weight': `${objectiveWeight.toFixed(1)}%`,
+          'Strategic Initiative': '-',
+          'Initiative Weight': '-',
+          'Performance Measure/Main Activity': '-',
+          'Weight': '-',
           'Baseline': '-',
           'Q1Target': '-',
           'Q2Target': '-',
@@ -332,7 +333,7 @@ const PlanSummary: React.FC = () => {
           'Q4Target': '-',
           'AnnualTarget': '-',
           'Implementor': 'Ministry of Health',
-            'Strategic Objective Weight': `${objectiveWeight.toFixed(1)}%`,
+          'BudgetRequired': '-',
           'Government': '-',
           'Partners': '-',
           'SDG': '-',
@@ -806,7 +807,7 @@ const PlanSummary: React.FC = () => {
                 {filteredPlanData.status}
               </div>
               {filteredPlanData.submitted_at && (
-                <span className="text-sm text-gray-500 ml-2">
+                    {objectiveWeight.toFixed(1)}%
                   Submitted on {formatDate(filteredPlanData.submitted_at)}
                 </span>
               )}
@@ -912,7 +913,7 @@ const PlanSummary: React.FC = () => {
           {filteredPlanData.reviews?.length > 0 && (
             <div className="border-b border-gray-200 pb-6">
               <h2 className="text-lg font-medium text-gray-900 mb-4">Evaluator Feedback</h2>
-              <div className={`p-4 rounded-lg ${
+                      {objectiveWeight.toFixed(1)}%
                 filteredPlanData.status === 'APPROVED' ? 'bg-green-50 border border-green-200' : 
                 filteredPlanData.status === 'REJECTED' ? 'bg-red-50 border border-red-200' : 
                 'bg-gray-50 border border-gray-200'
