@@ -204,7 +204,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [loadingProgress, setLoadingProgress] = useState('');
   const [retryCount, setRetryCount] = useState(0);
-  const [currentUserOrgId, setCurrentUserOrgId] = useState<number | null>(null);
 
   // Fetch organizations for mapping IDs to names
   useEffect(() => {
@@ -234,13 +233,16 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     fetchOrganizations();
   }, []);
 
+  // Get user organization ID for filtering
+  const [userOrgId, setUserOrgId] = useState<number | null>(null);
+
   useEffect(() => {
-    const fetchCurrentUserOrgId = async () => {
+    const fetchUserOrgId = async () => {
       try {
         const authData = await auth.getCurrentUser();
         if (authData.userOrganizations && authData.userOrganizations.length > 0) {
           const orgId = authData.userOrganizations[0].organization;
-          setCurrentUserOrgId(orgId);
+          setUserOrgId(orgId);
           console.log('PlanReviewTable: User organization ID set to:', orgId);
         }
       } catch (error) {
@@ -248,9 +250,8 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       }
     };
     
-    fetchCurrentUserOrgId();
+    fetchUserOrgId();
   }, []);
-
   // Enhanced data fetching for production
   const fetchCompleteData = async (objectivesList: any[]) => {
     if (!objectivesList || objectivesList.length === 0) {
@@ -258,11 +259,11 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       return [];
     }
 
-    if (!currentUserOrgId) {
+    if (!userOrgId) {
       console.error('No user organization ID available for filtering');
       return [];
     }
-    console.log(`Processing ${objectivesList.length} objectives for complete data (User Org: ${currentUserOrgId})`);
+    console.log(`Processing ${objectivesList.length} objectives for complete data`);
     setLoadingProgress('Initializing data fetch...');
     
     const enrichedObjectives = [];
@@ -283,20 +284,27 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
         // CRITICAL FIX: Strict filtering - only show initiatives from user's organization or defaults
         const filteredInitiatives = objectiveInitiatives.filter(initiative => {
-          // Only include default initiatives OR initiatives specifically created by user's organization
+          // ENHANCED FILTERING: Only include initiatives that truly belong to the planner's organization
           const isDefault = initiative.is_default === true;
-          const belongsToUserOrg = initiative.organization === currentUserOrgId;
+          const belongsToUserOrg = initiative.organization === userOrgId;
           const hasNoOrg = !initiative.organization; // Legacy data without organization
           
-          // For stricter filtering, only include defaults or user's org initiatives
+          // CRITICAL: For plan viewing, we want STRICT filtering
+          // Only include if it's a default initiative OR explicitly belongs to the current user's organization
           const shouldInclude = isDefault || belongsToUserOrg;
           
-          console.log(`Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, userOrg=${currentUserOrgId}, belongsToUser=${belongsToUserOrg}, shouldInclude=${shouldInclude}`);
+          // Additional check: If initiative has an organization and it's NOT the current user's, exclude it
+          if (initiative.organization && initiative.organization !== currentUserOrgId && !isDefault) {
+            console.log(`EXCLUDING Initiative "${initiative.name}": belongs to org ${initiative.organization}, not current org ${currentUserOrgId}`);
+            return false;
+          }
+          
+          console.log(`Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, userOrg=${userOrgId}, belongsToUser=${belongsToUserOrg}, shouldInclude=${shouldInclude}`);
           
           return shouldInclude;
         });
 
-        console.log(`Filtered to ${filteredInitiatives.length} initiatives for user org ${currentUserOrgId}`);
+        console.log(`Filtered to ${filteredInitiatives.length} initiatives for user org ${userOrgId}`);
 
         // Process each initiative sequentially to avoid overwhelming the server
         const enrichedInitiatives = [];
@@ -321,25 +329,38 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
             // CRITICAL FIX: Strict filtering for measures and activities
             const filteredMeasures = measures.filter(measure => {
-              const belongsToUserOrg = measure.organization === currentUserOrgId;
+              const belongsToUserOrg = measure.organization === userOrgId;
               const hasNoOrg = !measure.organization; // Legacy data
               
-              // Only include measures from user's organization (including legacy data without org)
+              // STRICT FILTERING: Only include measures that truly belong to current organization
+              // For legacy data without organization, only include if there's no organization specified
               const shouldInclude = belongsToUserOrg || hasNoOrg;
               
-              console.log(`Measure "${measure.name}": org=${measure.organization}, userOrg=${currentUserOrgId}, belongsToUser=${belongsToUserOrg}, shouldInclude=${shouldInclude}`);
+              // Additional check: If measure has an organization and it's NOT the current user's, exclude it
+              if (measure.organization && measure.organization !== currentUserOrgId) {
+                console.log(`EXCLUDING Measure "${measure.name}": belongs to org ${measure.organization}, not current org ${currentUserOrgId}`);
+                return false;
+              }
+              
+              console.log(`Measure "${measure.name}": org=${measure.organization}, userOrg=${userOrgId}, belongsToUser=${belongsToUserOrg}, shouldInclude=${shouldInclude}`);
               
               return shouldInclude;
             });
             
             const filteredActivities = activities.filter(activity => {
-              const belongsToUserOrg = activity.organization === currentUserOrgId;
+              const belongsToUserOrg = activity.organization === userOrgId;
               const hasNoOrg = !activity.organization; // Legacy data
               
-              // Only include activities from user's organization (including legacy data without org)
+              // STRICT FILTERING: Only include activities that truly belong to current organization
               const shouldInclude = belongsToUserOrg || hasNoOrg;
               
-              console.log(`Activity "${activity.name}": org=${activity.organization}, userOrg=${currentUserOrgId}, belongsToUser=${belongsToUserOrg}, shouldInclude=${shouldInclude}`);
+              // Additional check: If activity has an organization and it's NOT the current user's, exclude it
+              if (activity.organization && activity.organization !== currentUserOrgId) {
+                console.log(`EXCLUDING Activity "${activity.name}": belongs to org ${activity.organization}, not current org ${currentUserOrgId}`);
+                return false;
+              }
+              
+              console.log(`Activity "${activity.name}": org=${activity.organization}, userOrg=${userOrgId}, belongsToUser=${belongsToUserOrg}, shouldInclude=${shouldInclude}`);
               
               return shouldInclude;
             });
@@ -449,7 +470,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       }
 
       // Wait for userOrgId to be available before processing
-      if (!currentUserOrgId) {
+      if (!userOrgId) {
         console.log('Waiting for user organization ID...');
         return;
       }
@@ -491,7 +512,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [objectives, currentUserOrgId, retryCount, isPreviewMode, isViewOnly]);
+  }, [objectives, userOrgId, retryCount, isPreviewMode, isViewOnly]);
 
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);
@@ -785,7 +806,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                     <tr key={`obj-${objective.id}-empty`} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{objIndex + 1}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{objective.title}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(objective.effective_weight || objective.planner_weight || objective.weight || 0).toFixed(1)}%</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(objective.effective_weight || objective.planner_weight || objective.weight).toFixed(1)}%</td>
                       <td className="px-6 py-4 text-sm text-gray-500 italic">No initiatives</td>
                       <td className="px-6 py-4 text-sm text-gray-500">-</td>
                       <td className="px-6 py-4 text-sm text-gray-500">-</td>
@@ -830,7 +851,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                                 )}
                               </td>
                               <td rowSpan={objectiveRowSpan} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 bg-gray-50">
-                                {(objective.effective_weight || objective.planner_weight || objective.weight || 0).toFixed(1)}%
+                                {(objective.effective_weight || objective.planner_weight || objective.weight).toFixed(1)}%
                               </td>
                             </>
                           )}
@@ -904,7 +925,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                                   )}
                                 </td>
                                 <td rowSpan={objectiveRowSpan} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 bg-gray-50">
-                                  {(objective.effective_weight || objective.planner_weight || objective.weight || 0).toFixed(1)}%
+                                  {(objective.effective_weight || objective.planner_weight || objective.weight).toFixed(1)}%
                                 </td>
                               </>
                             )}

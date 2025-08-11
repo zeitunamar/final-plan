@@ -32,6 +32,7 @@ const PlanSummary: React.FC = () => {
 
   // Add organizations mapping for implementer display
   const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
+  const [plannerOrgId, setPlannerOrgId] = useState<number | null>(null);
 
   // Query hooks
   const { data: organizationsData } = useQuery({
@@ -132,6 +133,7 @@ const PlanSummary: React.FC = () => {
         if (authData.userOrganizations?.length > 0) {
           setUserRole(authData.userOrganizations[0].role);
           setUserOrganizations(authData.userOrganizations.map(org => org.organization));
+          setPlannerOrgId(authData.userOrganizations[0].organization);
         }
         
         const response = await axios.get('/api/auth/csrf/', { withCredentials: true });
@@ -319,7 +321,6 @@ const PlanSummary: React.FC = () => {
         exportData.push({
           No: objIndex + 1,
           'Strategic Objective': objective.title || 'Untitled Objective',
-          'Strategic Objective Weight': `${calculatedWeight.toFixed(1)}%`,
           'Strategic Objective Weight': `${objectiveWeight.toFixed(1)}%`,
           'Strategic Initiative': '-',
           'Initiative Weight': '-',
@@ -557,13 +558,13 @@ const PlanSummary: React.FC = () => {
       const filteredObjectivesForExport = processedPlanData.objectives?.map(objective => {
         if (!objective.initiatives) return objective;
         
-        // Filter initiatives to only include user's organization or defaults
+        // Filter initiatives to only include planner's organization or defaults
         const userInitiatives = objective.initiatives.filter(initiative => {
           const isDefault = initiative.is_default === true;
-          const belongsToUserOrg = initiative.organization === userOrganizations[0];
+          const belongsToUserOrg = initiative.organization === plannerOrgId;
           const shouldInclude = isDefault || belongsToUserOrg;
           
-          console.log(`Export filter - Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, userOrg=${userOrganizations[0]}, shouldInclude=${shouldInclude}`);
+          console.log(`Export filter - Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, userOrg=${plannerOrgId}, shouldInclude=${shouldInclude}`);
           
           return shouldInclude;
         });
@@ -571,15 +572,11 @@ const PlanSummary: React.FC = () => {
         // For each initiative, filter measures and activities
         const filteredInitiatives = userInitiatives.map(initiative => {
           const filteredMeasures = (initiative.performance_measures || []).filter(measure => {
-            const belongsToUserOrg = measure.organization === userOrganizations[0];
-            const hasNoOrg = !measure.organization;
-            return belongsToUserOrg || hasNoOrg;
+            return measure.organization === plannerOrgId || !measure.organization;
           });
           
           const filteredActivities = (initiative.main_activities || []).filter(activity => {
-            const belongsToUserOrg = activity.organization === userOrganizations[0];
-            const hasNoOrg = !activity.organization;
-            return belongsToUserOrg || hasNoOrg;
+            return activity.organization === plannerOrgId || !activity.organization;
           });
           
           return {
@@ -624,21 +621,21 @@ const PlanSummary: React.FC = () => {
     const filteredObjectivesForPDF = processedPlanData.objectives?.map(objective => {
       if (!objective.initiatives) return objective;
       
-      // Filter initiatives to only include user's organization or defaults
+      // Filter initiatives to only include planner's organization or defaults
       const userInitiatives = objective.initiatives.filter(initiative => {
         const isDefault = initiative.is_default === true;
-        const belongsToUserOrg = initiative.organization === userOrganizations[0];
+        const belongsToUserOrg = initiative.organization === plannerOrgId;
         return isDefault || belongsToUserOrg;
       });
       
       // For each initiative, filter measures and activities
       const filteredInitiatives = userInitiatives.map(initiative => {
         const filteredMeasures = (initiative.performance_measures || []).filter(measure => {
-          return measure.organization === userOrganizations[0] || !measure.organization;
+          return measure.organization === plannerOrgId || !measure.organization;
         });
         
         const filteredActivities = (initiative.main_activities || []).filter(activity => {
-          return activity.organization === userOrganizations[0] || !activity.organization;
+          return activity.organization === plannerOrgId || !activity.organization;
         });
         
         return {
@@ -722,41 +719,47 @@ const PlanSummary: React.FC = () => {
     );
   }
 
-  // CRITICAL FIX: Filter plan data before displaying to ensure only user org data is shown
+  // CRITICAL FIX: Enhanced filtering function to ensure ONLY planner organization data
   const getFilteredPlanData = () => {
-    if (!processedPlanData?.objectives || !userOrganizations?.length) {
+    if (!processedPlanData?.objectives || !plannerOrgId) {
       return processedPlanData;
     }
     
-    const userOrgId = userOrganizations[0];
-    console.log('Filtering plan data for user organization:', userOrgId);
+    console.log('Filtering plan data for planner organization:', plannerOrgId);
     
     const filteredObjectives = processedPlanData.objectives.map(objective => {
       if (!objective.initiatives) return objective;
       
-      // Filter initiatives to only include user's organization or defaults
+      // STRICT FILTERING: Only include default initiatives OR initiatives from planner's organization
       const userInitiatives = objective.initiatives.filter(initiative => {
         const isDefault = initiative.is_default === true;
-        const belongsToUserOrg = initiative.organization === userOrgId;
+        const belongsToUserOrg = initiative.organization === plannerOrgId;
+        const hasNoOrg = !initiative.organization; // Legacy data
         const shouldInclude = isDefault || belongsToUserOrg;
         
-        console.log(`Plan view filter - Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, userOrg=${userOrgId}, shouldInclude=${shouldInclude}`);
+        console.log(`Plan view filter - Initiative "${initiative.name}": isDefault=${isDefault}, org=${initiative.organization}, plannerOrg=${plannerOrgId}, shouldInclude=${shouldInclude}`);
         
         return shouldInclude;
       });
       
-      // For each initiative, filter measures and activities
+      // For each initiative, filter measures and activities by planner organization
       const filteredInitiatives = userInitiatives.map(initiative => {
         const filteredMeasures = (initiative.performance_measures || []).filter(measure => {
-          const belongsToUserOrg = measure.organization === userOrgId;
+          const belongsToUserOrg = measure.organization === plannerOrgId;
           const hasNoOrg = !measure.organization;
-          return belongsToUserOrg || hasNoOrg;
+          const shouldInclude = belongsToUserOrg || hasNoOrg;
+          
+          console.log(`Measure "${measure.name}": org=${measure.organization}, plannerOrg=${plannerOrgId}, shouldInclude=${shouldInclude}`);
+          return shouldInclude;
         });
         
         const filteredActivities = (initiative.main_activities || []).filter(activity => {
-          const belongsToUserOrg = activity.organization === userOrgId;
+          const belongsToUserOrg = activity.organization === plannerOrgId;
           const hasNoOrg = !activity.organization;
-          return belongsToUserOrg || hasNoOrg;
+          const shouldInclude = belongsToUserOrg || hasNoOrg;
+          
+          console.log(`Activity "${activity.name}": org=${activity.organization}, plannerOrg=${plannerOrgId}, shouldInclude=${shouldInclude}`);
+          return shouldInclude;
         });
         
         return {
@@ -780,6 +783,7 @@ const PlanSummary: React.FC = () => {
   
   // Get filtered plan data for display
   const filteredPlanData = getFilteredPlanData();
+  
   // Main render
   return (
     <div className="px-4 py-6 sm:px-0">
@@ -807,7 +811,7 @@ const PlanSummary: React.FC = () => {
                 {filteredPlanData.status}
               </div>
               {filteredPlanData.submitted_at && (
-                    {objectiveWeight.toFixed(1)}%
+                <span className="ml-2 text-sm text-gray-500">
                   Submitted on {formatDate(filteredPlanData.submitted_at)}
                 </span>
               )}
@@ -865,7 +869,7 @@ const PlanSummary: React.FC = () => {
                   toDate={filteredPlanData.to_date || ''}
                   planType={filteredPlanData.type || 'N/A'}
                   isPreviewMode={true}
-                  userOrgId={userOrganizations[0] || null}
+                  userOrgId={plannerOrgId}
                   isViewOnly={true}
                 />
               </div>
@@ -913,21 +917,21 @@ const PlanSummary: React.FC = () => {
           {filteredPlanData.reviews?.length > 0 && (
             <div className="border-b border-gray-200 pb-6">
               <h2 className="text-lg font-medium text-gray-900 mb-4">Evaluator Feedback</h2>
-                      {objectiveWeight.toFixed(1)}%
+              <div className={`p-4 rounded-lg ${
                 filteredPlanData.status === 'APPROVED' ? 'bg-green-50 border border-green-200' : 
                 filteredPlanData.status === 'REJECTED' ? 'bg-red-50 border border-red-200' : 
                 'bg-gray-50 border border-gray-200'
               }`}>
                 <div className="flex items-start">
                   {filteredPlanData.status === 'APPROVED' ? (
-                    <CheckCircle className={\`h-5 w-5 mr-2 text-green-500 mt-0.5`} />
+                    <CheckCircle className="h-5 w-5 mr-2 text-green-500 mt-0.5" />
                   ) : filteredPlanData.status === 'REJECTED' ? (
-                    <XCircle className={\`h-5 w-5 mr-2 text-red-500 mt-0.5`} />
+                    <XCircle className="h-5 w-5 mr-2 text-red-500 mt-0.5" />
                   ) : (
                     <div className="h-5 w-5 mr-2" />
                   )}
                   <div>
-                    <p className={\`font-medium ${
+                    <p className={`font-medium ${
                       filteredPlanData.status === 'APPROVED' ? 'text-green-700' : 
                       filteredPlanData.status === 'REJECTED' ? 'text-red-700' : 
                       'text-gray-700'
