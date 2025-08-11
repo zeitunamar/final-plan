@@ -485,6 +485,12 @@ const Planning: React.FC = () => {
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <AlertCircle className="h-12 w-12 text-amber-500 mb-4" />
         <h3 className="text-lg font-medium text-amber-800 mb-2">{t('planning.permissions.noAccess')}</h3>
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+        >
+          Return to Dashboard
+        </button>
         </button>
       </div>
     );
@@ -492,6 +498,10 @@ const Planning: React.FC = () => {
 
   if (!userOrganization) {
     return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+        <h3 className="text-lg font-medium text-red-800 mb-2">No Organization Access</h3>
+        <p className="text-red-600 mb-4">You don't have access to any organization for planning.</p>
         <button
           onClick={() => navigate('/dashboard')}
           className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
