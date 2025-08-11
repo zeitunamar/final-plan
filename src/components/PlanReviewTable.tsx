@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Download, FileSpreadsheet, File as FilePdf, Send, AlertCircle, CheckCircle, DollarSign, Building2, Target, Activity, BarChart3, Info, Loader } from 'lucide-react';
 import { useLanguage } from '../lib/i18n/LanguageContext';
-import { organizations, auth } from '../lib/api';
+import { organizations, auth, performanceMeasures, mainActivities } from '../lib/api';
 import type { StrategicObjective } from '../types/organization';
 import type { PlanType } from '../types/plan';
 import { exportToExcel, exportToPDF, processDataForExport } from '../lib/utils/export';
@@ -41,10 +42,97 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
   const [processedObjectives, setProcessedObjectives] = useState<StrategicObjective[]>([]);
+  const [isRefreshingData, setIsRefreshingData] = useState(false);
 
   // Determine the effective user organization ID
   const effectiveUserOrgId = userOrgId || planData?.organization || null;
 
+  // Create a query key that includes all initiative IDs to fetch fresh data
+  const allInitiativeIds = React.useMemo(() => {
+    const ids: string[] = [];
+    objectives?.forEach(objective => {
+      objective.initiatives?.forEach(initiative => {
+        if (initiative.id) {
+          ids.push(initiative.id);
+        }
+      });
+    });
+    return ids;
+  }, [objectives]);
+
+  // Fetch fresh performance measures for all initiatives
+  const { data: freshPerformanceMeasures, isLoading: isLoadingMeasures } = useQuery({
+    queryKey: ['performance-measures-fresh', allInitiativeIds, effectiveUserOrgId],
+    queryFn: async () => {
+      if (!allInitiativeIds.length) return {};
+      
+      console.log('Fetching fresh performance measures for initiatives:', allInitiativeIds);
+      const measuresMap: Record<string, any[]> = {};
+      
+      await Promise.all(
+        allInitiativeIds.map(async (initiativeId) => {
+          try {
+            const response = await performanceMeasures.getByInitiative(initiativeId);
+            const measures = response?.data || [];
+            
+            // Filter by organization
+            const filteredMeasures = measures.filter(measure => 
+              !measure.organization || measure.organization === effectiveUserOrgId
+            );
+            
+            measuresMap[initiativeId] = filteredMeasures;
+            console.log(`Fresh measures for initiative ${initiativeId}:`, filteredMeasures.length);
+          } catch (error) {
+            console.error(`Error fetching measures for initiative ${initiativeId}:`, error);
+            measuresMap[initiativeId] = [];
+          }
+        })
+      );
+      
+      return measuresMap;
+    },
+    enabled: !!effectiveUserOrgId && allInitiativeIds.length > 0,
+    staleTime: 0, // Always fetch fresh data
+    refetchOnWindowFocus: true,
+    refetchInterval: 30000 // Refresh every 30 seconds
+  });
+
+  // Fetch fresh main activities for all initiatives
+  const { data: freshMainActivities, isLoading: isLoadingActivities } = useQuery({
+    queryKey: ['main-activities-fresh', allInitiativeIds, effectiveUserOrgId],
+    queryFn: async () => {
+      if (!allInitiativeIds.length) return {};
+      
+      console.log('Fetching fresh main activities for initiatives:', allInitiativeIds);
+      const activitiesMap: Record<string, any[]> = {};
+      
+      await Promise.all(
+        allInitiativeIds.map(async (initiativeId) => {
+          try {
+            const response = await mainActivities.getByInitiative(initiativeId);
+            const activities = response?.data || [];
+            
+            // Filter by organization
+            const filteredActivities = activities.filter(activity => 
+              !activity.organization || activity.organization === effectiveUserOrgId
+            );
+            
+            activitiesMap[initiativeId] = filteredActivities;
+            console.log(`Fresh activities for initiative ${initiativeId}:`, filteredActivities.length);
+          } catch (error) {
+            console.error(`Error fetching activities for initiative ${initiativeId}:`, error);
+            activitiesMap[initiativeId] = [];
+          }
+        })
+      );
+      
+      return activitiesMap;
+    },
+    enabled: !!effectiveUserOrgId && allInitiativeIds.length > 0,
+    staleTime: 0, // Always fetch fresh data
+    refetchOnWindowFocus: true,
+    refetchInterval: 30000 // Refresh every 30 seconds
+  });
   // Fetch organizations for mapping names
   useEffect(() => {
     const fetchOrganizations = async () => {
@@ -69,7 +157,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     fetchOrganizations();
   }, []);
 
-  // Process objectives when data changes
+  // Process objectives with fresh data when any data changes
   useEffect(() => {
     if (!effectiveUserOrgId || !objectives?.length) {
       console.log('PlanReviewTable: Waiting for organization ID or objectives...', { 
@@ -80,13 +168,14 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       return;
     }
 
-    console.log('PlanReviewTable: Processing objectives with organization filter:', effectiveUserOrgId);
+    setIsRefreshingData(true);
+    console.log('PlanReviewTable: Processing objectives with fresh data and organization filter:', effectiveUserOrgId);
     
     try {
       const filteredObjectives = objectives.map(objective => {
         if (!objective) return objective;
 
-        // Process initiatives for this objective
+        // Process initiatives for this objective with fresh data
         const userInitiatives = (objective.initiatives || []).filter(initiative => {
           const isDefault = initiative.is_default === true;
           const belongsToUserOrg = Number(initiative.organization) === Number(effectiveUserOrgId);
@@ -100,17 +189,23 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           return shouldInclude;
         });
 
-        // For each initiative, filter measures and activities
+        // For each initiative, use fresh measures and activities data
         const processedInitiatives = userInitiatives.map(initiative => {
-          const filteredMeasures = (initiative.performance_measures || []).filter(measure => {
-            const belongsToUserOrg = !measure.organization || Number(measure.organization) === Number(effectiveUserOrgId);
-            return belongsToUserOrg;
-          });
-
-          const filteredActivities = (initiative.main_activities || []).filter(activity => {
-            const belongsToUserOrg = !activity.organization || Number(activity.organization) === Number(effectiveUserOrgId);
-            return belongsToUserOrg;
-          });
+          // Use fresh performance measures data if available, otherwise use provided data
+          const freshMeasures = freshPerformanceMeasures?.[initiative.id] || [];
+          const providedMeasures = (initiative.performance_measures || []).filter(measure => 
+            !measure.organization || Number(measure.organization) === Number(effectiveUserOrgId)
+          );
+          const filteredMeasures = freshMeasures.length > 0 ? freshMeasures : providedMeasures;
+          
+          // Use fresh main activities data if available, otherwise use provided data
+          const freshActivities = freshMainActivities?.[initiative.id] || [];
+          const providedActivities = (initiative.main_activities || []).filter(activity => 
+            !activity.organization || Number(activity.organization) === Number(effectiveUserOrgId)
+          );
+          const filteredActivities = freshActivities.length > 0 ? freshActivities : providedActivities;
+          
+          console.log(`Initiative ${initiative.name}: fresh measures=${freshMeasures.length}, provided measures=${providedMeasures.length}, fresh activities=${freshActivities.length}, provided activities=${providedActivities.length}`);
 
           return {
             ...initiative,
@@ -126,11 +221,14 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       });
 
       setProcessedObjectives(filteredObjectives);
+      console.log('PlanReviewTable: Processed objectives with fresh data:', filteredObjectives.length);
     } catch (error) {
       console.error('Error processing objectives:', error);
       setProcessedObjectives([]);
+    } finally {
+      setIsRefreshingData(false);
     }
-  }, [objectives, effectiveUserOrgId]);
+  }, [objectives, effectiveUserOrgId, freshPerformanceMeasures, freshMainActivities]);
 
   const formatCurrency = (amount: number): string => {
     return `$${amount.toLocaleString()}`;
@@ -233,11 +331,15 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   };
 
   // Show loading if no organization context
-  if (!effectiveUserOrgId) {
+  if (!effectiveUserOrgId || isLoadingMeasures || isLoadingActivities || isRefreshingData) {
     return (
       <div className="flex items-center justify-center p-8">
         <Loader className="h-6 w-6 animate-spin mr-2" />
-        <span className="text-gray-600">Loading...</span>
+        <span className="text-gray-600">
+          {isRefreshingData ? 'Refreshing plan data...' : 
+           isLoadingMeasures || isLoadingActivities ? 'Loading fresh data...' : 
+           'Loading...'}
+        </span>
       </div>
     );
   }
@@ -359,8 +461,8 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           ? Number(item.q1_target || 0) + Number(item.q2_target || 0)
           : Number(item.q2_target || 0);
 
-        // Add prefix based on item type
-        const displayName = item.type === 'Performance Measure' 
+        // Add prefix to name based on type for clear identification
+        const displayName = isPerformanceMeasure 
           ? `PM: ${item.name}` 
           : `MA: ${item.name}`;
 
@@ -466,28 +568,28 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gradient-to-r from-green-600 to-blue-600">
               <tr>
-                <th className="px-4 py-4 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">No.</th>
-                <th className="px-4 py-4 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Strategic Objective</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Obj Weight</th>
-                <th className="px-4 py-4 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Strategic Initiative</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Init Weight</th>
-                <th className="px-4 py-4 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">PM/MA Name</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Weight</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Baseline</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Q1 Target</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Q2 Target</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20 bg-blue-700">6-Month Target</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Q3 Target</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Q4 Target</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Annual Target</th>
-                <th className="px-4 py-4 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Implementor</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Budget Required</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Government</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Partners</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">SDG</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Other</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Total Available</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider">Gap</th>
+                <th className="px-4 py-5 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">No.</th>
+                <th className="px-4 py-5 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">Strategic Objective</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">Obj Weight</th>
+                <th className="px-4 py-5 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">Strategic Initiative</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">Init Weight</th>
+                <th className="px-4 py-5 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">PM/MA Name</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">Weight</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">Baseline</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">Q1 Target</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">Q2 Target</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg bg-gradient-to-r from-blue-700 to-indigo-700">6-Month Target</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">Q3 Target</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">Q4 Target</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">Annual Target</th>
+                <th className="px-4 py-5 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg">Implementor</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg bg-gradient-to-r from-green-700 to-emerald-700">Budget Required</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg bg-gradient-to-r from-blue-600 to-blue-700">Government</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg bg-gradient-to-r from-purple-600 to-purple-700">Partners</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg bg-gradient-to-r from-green-600 to-green-700">SDG</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg bg-gradient-to-r from-orange-600 to-orange-700">Other</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/30 shadow-lg bg-gradient-to-r from-blue-600 to-blue-700">Total Available</th>
+                <th className="px-4 py-5 text-center text-xs font-bold text-white uppercase tracking-wider shadow-lg bg-gradient-to-r from-red-600 to-red-700">Gap</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -526,7 +628,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                       {row.itemType === 'Main Activity' && (
                         <Activity className="h-4 w-4 text-green-600 mr-2 flex-shrink-0" title="Main Activity" />
                       )}
-                      <div className="truncate" title={row.itemName}>{row.itemName}</div>
+                      <div className="truncate" title={row.displayName || row.itemName}>{row.displayName || row.itemName}</div>
                     </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
