@@ -197,7 +197,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   isPreviewMode = false,
   userOrgId = null,
   isViewOnly = false,
-  planData</parameter>
+  planData
 }) => {
   const [organizationsMap, setOrganizationsMap] = useState<Record<string, string>>({});
   const [plannerOrgId, setPlannerOrgId] = useState<number | null>(null);
@@ -207,6 +207,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   const [retryCount, setRetryCount] = useState(0);
   const [currentUserOrgId, setCurrentUserOrgId] = useState<number | null>(null);
   const [authLoaded, setAuthLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Fetch organizations for mapping IDs to names
   useEffect(() => {
@@ -355,9 +356,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   // Fetch organizations for mapping names
   useEffect(() => {
     const fetchOrganizations = async () => {
-        return;
-      }
-      
+      try {
         const response = await organizations.getAll();
         const orgMap: Record<string, string> = {};
         
@@ -376,7 +375,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     };
     
     fetchOrganizations();
-  }, []);</parameter>
+  }, []);
 
   // Helper function to filter data by organization - ONLY show user's organization data
   const filterByUserOrganization = (objectives: any[]) => {
@@ -909,12 +908,13 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   }
 
   // Empty state
-  if (!filteredObjectives || filteredObjectives.length === 0) {
+  if (!processedObjectives || processedObjectives.length === 0) {
     return (
       <div className="p-8 bg-gray-50 rounded-lg border border-gray-200 text-center">
         <Target className="h-12 w-12 text-gray-400 mx-auto mb-4" />
         <h3 className="text-lg font-medium text-gray-800 mb-2">No Plan Data Available</h3>
         <p className="text-gray-600">No objectives found to display in the plan table.</p>
+        <p className="text-gray-600">No objectives or initiatives found for this planner's organization.</p>
       </div>
     );
   }
@@ -1098,10 +1098,8 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                 } else {
                   objective.initiatives.forEach((initiative: any, initIndex: number) => {
                     const performanceMeasures = initiative.performance_measures || [];
-                  {processedObjectives.map((objective, objIndex) => {
-                    const objectiveWeight = objective.effective_weight || 
-                                           objective.planner_weight || 
-                                           objective.weight;
+                    const mainActivities = initiative.main_activities || [];
+                    const allItems = [...performanceMeasures, ...mainActivities];
                     
                     if (allItems.length === 0) {
                       // Initiative with no measures or activities
