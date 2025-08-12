@@ -41,6 +41,7 @@ const PlanSummary: React.FC = () => {
       try {
         const response = await organizations.getAll();
         return response || [];
+      } catch (error) {
         if (response?.data && Array.isArray(response.data)) {
           response.data.forEach((org: any) => {
             if (org && org.id && org.name) {
@@ -340,6 +341,10 @@ const PlanSummary: React.FC = () => {
     console.log('Converting plan data for export - user org:', userOrgId);
     console.log('Objectives to convert:', objectives.length);
     
+    if (!objectives || !Array.isArray(objectives) || objectives.length === 0) {
+      return exportData;
+    }
+
     objectives.forEach((objective, objIndex) => {
       if (!objective || !objective.id) return;
       
