@@ -516,7 +516,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
   // Convert processed objectives to table rows
   const tableRows: any[] = [];
-  let rowNumber = 1;
 
   processedObjectives.forEach((objective, objIndex) => {
     const effectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
@@ -524,7 +523,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     if (!objective.initiatives || objective.initiatives.length === 0) {
       // Objective with no initiatives
       tableRows.push({
-        no: rowNumber++,
+        no: objIndex + 1,
         objective: objective.title,
         objectiveWeight: `${effectiveWeight.toFixed(1)}%`,
         initiative: '-',
@@ -557,7 +556,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
     let objectiveAdded = false;
     
-    objective.initiatives.forEach((initiative, initIndex) => {
+    objective.initiatives.forEach((initiative) => {
       const allItems = [
         ...(initiative.performance_measures || []).map(item => ({ ...item, type: 'Performance Measure' })),
         ...(initiative.main_activities || []).map(item => ({ ...item, type: 'Main Activity' }))
@@ -566,7 +565,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       if (allItems.length === 0) {
         // Initiative with no items
         tableRows.push({
-          no: objectiveAdded ? '' : rowNumber++,
+          no: objectiveAdded ? '' : (objIndex + 1),
           objective: objectiveAdded ? '' : objective.title,
           objectiveWeight: objectiveAdded ? '' : `${effectiveWeight.toFixed(1)}%`,
           initiative: initiative.name,
@@ -600,7 +599,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
       let initiativeAdded = false;
 
-      allItems.forEach((item, itemIndex) => {
+      allItems.forEach((item) => {
         // Calculate budget values for main activities
         let budgetRequired = 0;
         let government = 0;
@@ -609,27 +608,38 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         let other = 0;
         let totalAvailable = 0;
         let gap = 0;
+        let totalAvailable = 0;
+        let gap = 0;
 
         if (item.type === 'Main Activity') {
-          // Calculate budget from sub-activities if they exist, otherwise use legacy budget
+          // Calculate budget from sub-activities if they exist
           if (item.sub_activities && item.sub_activities.length > 0) {
-            // Aggregate budget from all sub-activities
+            console.log(`Table display: Processing main activity "${item.name}" with ${item.sub_activities.length} sub-activities`);
+            
             item.sub_activities.forEach((subActivity: any) => {
-              if (subActivity.budget) {
-                const subBudgetRequired = subActivity.budget.budget_calculation_type === 'WITH_TOOL'
-                  ? Number(subActivity.budget.estimated_cost_with_tool || 0)
-                  : Number(subActivity.budget.estimated_cost_without_tool || 0);
-                
-                budgetRequired += subBudgetRequired;
-                government += Number(subActivity.budget.government_treasury || 0);
-                partners += Number(subActivity.budget.partners_funding || 0);
-                sdg += Number(subActivity.budget.sdg_funding || 0);
-                other += Number(subActivity.budget.other_funding || 0);
-              }
+              // Use direct SubActivity model fields
+              const subBudgetRequired = subActivity.budget_calculation_type === 'WITH_TOOL'
+                ? Number(subActivity.estimated_cost_with_tool || 0)
+                : Number(subActivity.estimated_cost_without_tool || 0);
+              
+              const subGov = Number(subActivity.government_treasury || 0);
+              const subPartners = Number(subActivity.partners_funding || 0);
+              const subSdg = Number(subActivity.sdg_funding || 0);
+              const subOther = Number(subActivity.other_funding || 0);
+              
+              console.log(`Table sub-activity "${subActivity.name}": budget=${subBudgetRequired}, gov=${subGov}, partners=${subPartners}, sdg=${subSdg}, other=${subOther}`);
+              
+              budgetRequired += subBudgetRequired;
+              government += subGov;
+              partners += subPartners;
+              sdg += subSdg;
+              other += subOther;
             });
             
             totalAvailable = government + partners + sdg + other;
             gap = Math.max(0, budgetRequired - totalAvailable);
+            
+            console.log(`Main activity "${item.name}" totals: budget=${budgetRequired}, available=${totalAvailable}, gap=${gap}`);
           } else if (item.budget) {
             // Use legacy budget if no sub-activities
             budgetRequired = item.budget.budget_calculation_type === 'WITH_TOOL' 
@@ -670,7 +680,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           : `MA: ${item.name}`;
 
         tableRows.push({
-          no: objectiveAdded ? '' : (objIndex + 1),
+          no: objectiveAdded ? '' : (objIndex + 1).toString(),
           objective: objectiveAdded ? '' : objective.title,
           objectiveWeight: objectiveAdded ? '' : `${effectiveWeight.toFixed(1)}%`,
           initiative: initiativeAdded ? '' : initiative.name,
