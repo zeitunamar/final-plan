@@ -328,6 +328,20 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
       partners += Number(activity.budget.partners_funding || 0);
       sdg += Number(activity.budget.sdg_funding || 0);
       other += Number(activity.budget.other_funding || 0);
+      
+      // Add legacy budget to total
+      const legacyBudget = activity.budget.budget_calculation_type === 'WITH_TOOL'
+        ? Number(activity.budget.estimated_cost_with_tool || 0)
+        : Number(activity.budget.estimated_cost_without_tool || 0);
+      totalBudget += legacyBudget;
+      
+      console.log('Using legacy budget:', {
+        budget: legacyBudget,
+        government: activity.budget.government_treasury,
+        partners: activity.budget.partners_funding,
+        sdg: activity.budget.sdg_funding,
+        other: activity.budget.other_funding
+      });
     }
     
     // Add sub-activities funding
@@ -355,13 +369,16 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
     }
     
     const total = government + partners + sdg + other;
+    const fundingGap = Math.max(0, totalBudget - total);
     
     return {
       government,
       partners, 
       sdg,
       other,
-      total
+      total,
+      totalBudget,
+      fundingGap
     };
   };
 
@@ -601,7 +618,6 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
           const totalBudget = calculateActivityTotalBudget(activity);
           const totalFunding = calculateActivityTotalFunding(activity);
           const fundingGap = Math.max(0, totalBudget - totalFunding);
-          const activityTotals = calculateActivityFundingBreakdown(activity);
           
           return (
             <div
@@ -611,18 +627,12 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center">
-                  <h4 className="text-lg font-medium text-gray-900">{activity.name}</h4>
-                  <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    {activity.weight}%
-                  </span>
+                  <h4 className="font-medium text-gray-900">{activity.name}</h4>
                 </div>
                 <div className="flex flex-col items-end">
                   <span className="text-sm font-medium text-green-600">
-                    <div className="text-lg font-medium text-green-600">${Number(activityTotals.total || 0).toLocaleString()}</div>
+                    {activity.weight}%
                   </span>
-                  <div className={`text-lg font-medium ${Number(activityTotals.fundingGap || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    ${Math.abs(Number(activityTotals.fundingGap || 0)).toLocaleString()}
-                  </div>
                 </div>
               </div>
               
