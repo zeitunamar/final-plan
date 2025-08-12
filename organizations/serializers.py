@@ -108,13 +108,39 @@ class MainActivitySerializer(serializers.ModelSerializer):
         fields = '__all__'
     
     def get_total_budget(self, obj):
-        return obj.total_budget
+        # Calculate total budget from sub-activities + legacy budget
+        total = 0
+        
+        # Add from sub-activities
+        for sub_activity in obj.sub_activities.all():
+            total += sub_activity.estimated_cost
+        
+        # Add legacy budget if no sub-activities
+        if obj.sub_activities.count() == 0 and hasattr(obj, 'budget') and obj.budget:
+            legacy_cost = (obj.budget.estimated_cost_with_tool 
+                          if obj.budget.budget_calculation_type == 'WITH_TOOL'
+                          else obj.budget.estimated_cost_without_tool)
+            total += legacy_cost
+            
+        return total
     
     def get_total_funding(self, obj):
-        return obj.total_funding
+        # Calculate total funding from sub-activities + legacy budget
+        total = 0
+        
+        # Add from sub-activities
+        for sub_activity in obj.sub_activities.all():
+            total += sub_activity.total_funding
+        
+        # Add legacy budget funding if no sub-activities
+        if obj.sub_activities.count() == 0 and hasattr(obj, 'budget') and obj.budget:
+            total += (obj.budget.government_treasury + obj.budget.sdg_funding + 
+                     obj.budget.partners_funding + obj.budget.other_funding)
+            
+        return total
     
     def get_funding_gap(self, obj):
-        return obj.funding_gap
+        return self.get_total_budget(obj) - self.get_total_funding(obj)
 
 class ActivityCostingAssumptionSerializer(serializers.ModelSerializer):
     class Meta:
