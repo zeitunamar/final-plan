@@ -104,12 +104,14 @@ const AdminDashboard: React.FC = () => {
     },
     enabled: Object.keys(organizationsMap).length > 0,
     retry: 1,
-    staleTime: 2 * 60 * 1000, // Cache for 2 minutes
-    refetchOnWindowFocus: false
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    cacheTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    refetchOnWindowFocus: false,
+    refetchOnMount: false
   });
 
   // Calculate activity breakdown by organization
-  const calculateActivityBreakdown = () => {
+  const calculateActivityBreakdown = useMemo(() => {
     const activityBreakdown: Array<{
       organizationId: number;
       organizationName: string;
@@ -137,35 +139,68 @@ const AdminDashboard: React.FC = () => {
           const activities = initiative.main_activities || [];
           
           activities.forEach((activity: any) => {
-            if (!activity.budget) return;
-            
-            let activityType = (activity.budget.activity_type || 'Other').toLowerCase();
-            const budget = activity.budget.budget_calculation_type === 'WITH_TOOL' 
-              ? Number(activity.budget.estimated_cost_with_tool || 0)
-              : Number(activity.budget.estimated_cost_without_tool || 0);
-            
-            // Normalize activity types
-            if (activityType === 'supervision') activityType = 'Other';
-            if (!activityTypes.map(t => t.toLowerCase()).includes(activityType)) {
-              activityType = 'Other';
-            }
-            
-            // Find existing entry or create new one
-            const existingIndex = activityBreakdown.findIndex(item => 
-              item.organizationId === orgId && item.activityType === activityType
-            );
-            
-            if (existingIndex >= 0) {
-              activityBreakdown[existingIndex].budget += budget;
-              activityBreakdown[existingIndex].count += 1;
-            } else {
-              activityBreakdown.push({
-                organizationId: orgId,
-                organizationName: orgName,
-                activityType,
-                budget,
-                count: 1
+            // Calculate budget from sub-activities if they exist
+            if (activity.sub_activities && activity.sub_activities.length > 0) {
+              activity.sub_activities.forEach((subActivity: any) => {
+                let activityType = (subActivity.activity_type || 'Other').toLowerCase();
+                const budget = subActivity.budget_calculation_type === 'WITH_TOOL'
+                  ? Number(subActivity.estimated_cost_with_tool || 0)
+                  : Number(subActivity.estimated_cost_without_tool || 0);
+                
+                // Normalize activity types
+                if (activityType === 'supervision') activityType = 'other';
+                if (!activityTypes.map(t => t.toLowerCase()).includes(activityType)) {
+                  activityType = 'other';
+                }
+                
+                // Find existing entry or create new one
+                const existingIndex = activityBreakdown.findIndex(item => 
+                  item.organizationId === orgId && item.activityType === activityType
+                );
+                
+                if (existingIndex >= 0) {
+                  activityBreakdown[existingIndex].budget += budget;
+                  activityBreakdown[existingIndex].count += 1;
+                } else {
+                  activityBreakdown.push({
+                    organizationId: orgId,
+                    organizationName: orgName,
+                    activityType,
+                    budget,
+                    count: 1
+                  });
+                }
               });
+            } else if (activity.budget) {
+              // Use legacy budget if no sub-activities
+              let activityType = (activity.budget.activity_type || 'Other').toLowerCase();
+              const budget = activity.budget.budget_calculation_type === 'WITH_TOOL' 
+                ? Number(activity.budget.estimated_cost_with_tool || 0)
+                : Number(activity.budget.estimated_cost_without_tool || 0);
+              
+              // Normalize activity types
+              if (activityType === 'supervision') activityType = 'other';
+              if (!activityTypes.map(t => t.toLowerCase()).includes(activityType)) {
+                activityType = 'other';
+              }
+              
+              // Find existing entry or create new one
+              const existingIndex = activityBreakdown.findIndex(item => 
+                item.organizationId === orgId && item.activityType === activityType
+              );
+              
+              if (existingIndex >= 0) {
+                activityBreakdown[existingIndex].budget += budget;
+                activityBreakdown[existingIndex].count += 1;
+              } else {
+                activityBreakdown.push({
+                  organizationId: orgId,
+                  organizationName: orgName,
+                  activityType,
+                  budget,
+                  count: 1
+                });
+              }
             }
           });
         });
@@ -173,9 +208,7 @@ const AdminDashboard: React.FC = () => {
     });
 
     return activityBreakdown;
-  };
-
-  const activityBreakdown = calculateActivityBreakdown();
+  }, [allPlansData, organizationsMap, activityTypes]);
 
   // Transform activity breakdown data to organization-based summary
   const orgActivitySummary = useMemo(() => {
@@ -186,7 +219,7 @@ const AdminDashboard: React.FC = () => {
       totalBudget: number;
     }> = {};
 
-    activityBreakdown.forEach(item => {
+    calculateActivityBreakdown.forEach(item => {
       const orgName = item.organizationName;
       const type = item.activityType;
       
@@ -223,7 +256,7 @@ const AdminDashboard: React.FC = () => {
     return Object.values(summary).sort((a, b) => 
       a.organizationName.localeCompare(b.organizationName)
     );
-  }, [activityBreakdown]);
+  }, [calculateActivityBreakdown]);
 
   // Pagination for activity breakdown
   const totalActivityPages = Math.ceil(orgActivitySummary.length / activitiesPerPage);
@@ -232,7 +265,7 @@ const AdminDashboard: React.FC = () => {
   const currentActivityData = orgActivitySummary.slice(startActivityIndex, endActivityIndex);
 
   // Calculate comprehensive statistics including activity budgets
-  const calculateStats = () => {
+  const calculateStats = useMemo(() => {
     if (!allPlansData || !Array.isArray(allPlansData)) {
       return {
         totalPlans: 0,
@@ -316,8 +349,43 @@ const AdminDashboard: React.FC = () => {
             objective.initiatives.forEach((initiative: any) => {
               if (initiative.main_activities && Array.isArray(initiative.main_activities)) {
                 initiative.main_activities.forEach((activity: any) => {
-                  if (activity.budget) {
-                    // Get estimated cost based on calculation type
+                  // Calculate budget from sub-activities if they exist
+                  if (activity.sub_activities && activity.sub_activities.length > 0) {
+                    console.log(`Admin: Processing main activity "${activity.name}" with ${activity.sub_activities.length} sub-activities`);
+                    
+                    activity.sub_activities.forEach((subActivity: any) => {
+                      // Use direct SubActivity model fields
+                      const subBudgetRequired = subActivity.budget_calculation_type === 'WITH_TOOL'
+                        ? Number(subActivity.estimated_cost_with_tool || 0)
+                        : Number(subActivity.estimated_cost_without_tool || 0);
+                      
+                      const subGov = Number(subActivity.government_treasury || 0);
+                      const subPartners = Number(subActivity.partners_funding || 0);
+                      const subSdg = Number(subActivity.sdg_funding || 0);
+                      const subOther = Number(subActivity.other_funding || 0);
+                      
+                      console.log(`Admin sub-activity "${subActivity.name}": budget=${subBudgetRequired}, gov=${subGov}, partners=${subPartners}, sdg=${subSdg}, other=${subOther}`);
+                      
+                      totalBudget += subBudgetRequired;
+                      governmentFunding += subGov;
+                      sdgFunding += subSdg;
+                      partnersFunding += subPartners;
+                      otherFunding += subOther;
+                      
+                      // Track activity type budgets from sub-activities
+                      let activityType = (subActivity.activity_type || 'other').toLowerCase();
+                      if (activityType === 'supervision') activityType = 'other';
+                      
+                      if (activityBreakdown[activityType]) {
+                        activityBreakdown[activityType].count += 1;
+                        activityBreakdown[activityType].budget += subBudgetRequired;
+                      } else {
+                        activityBreakdown.other.count += 1;
+                        activityBreakdown.other.budget += subBudgetRequired;
+                      }
+                    });
+                  } else if (activity.budget) {
+                    // Use legacy budget if no sub-activities
                     const estimatedCost = activity.budget.budget_calculation_type === 'WITH_TOOL' 
                       ? Number(activity.budget.estimated_cost_with_tool || 0)
                       : Number(activity.budget.estimated_cost_without_tool || 0);
@@ -328,7 +396,7 @@ const AdminDashboard: React.FC = () => {
                     partnersFunding += Number(activity.budget.partners_funding || 0);
                     otherFunding += Number(activity.budget.other_funding || 0);
                     
-                    // Track activity type budgets
+                    // Track activity type budgets from legacy budget
                     let activityType = (activity.budget.activity_type || 'other').toLowerCase();
                     if (activityType === 'supervision') activityType = 'other';
                     
@@ -462,23 +530,37 @@ const AdminDashboard: React.FC = () => {
     stats.organizationStats = filteredOrgStats;
     
     return stats;
-  };
+  }, [allPlansData, organizationsMap]);
 
-  const stats = calculateStats();
-  
   // Pagination logic for all plans
-  const allPlans = allPlansData || [];
-  const totalPages = Math.ceil(allPlans.length / plansPerPage);
-  const startIndex = (currentPage - 1) * plansPerPage;
-  const endIndex = startIndex + plansPerPage;
-  const currentPlans = allPlans.slice(startIndex, endIndex);
+  const { allPlans, totalPages, currentPlans } = useMemo(() => {
+    const plans = allPlansData || [];
+    const total = Math.ceil(plans.length / plansPerPage);
+    const start = (currentPage - 1) * plansPerPage;
+    const end = start + plansPerPage;
+    const current = plans.slice(start, end);
+    
+    return {
+      allPlans: plans,
+      totalPages: total,
+      currentPlans: current
+    };
+  }, [allPlansData, currentPage, plansPerPage]);
   
   // Pagination logic for reviewed plans
-  const reviewedPlans = allPlans.filter(plan => ['APPROVED', 'REJECTED'].includes(plan.status));
-  const totalReviewedPages = Math.ceil(reviewedPlans.length / plansPerPage);
-  const reviewedStartIndex = (reviewedPage - 1) * plansPerPage;
-  const reviewedEndIndex = reviewedStartIndex + plansPerPage;
-  const currentReviewedPlans = reviewedPlans.slice(reviewedStartIndex, reviewedEndIndex);
+  const { reviewedPlans, totalReviewedPages, currentReviewedPlans } = useMemo(() => {
+    const reviewed = allPlans.filter(plan => ['APPROVED', 'REJECTED'].includes(plan.status));
+    const totalReviewed = Math.ceil(reviewed.length / plansPerPage);
+    const reviewedStart = (reviewedPage - 1) * plansPerPage;
+    const reviewedEnd = reviewedStart + plansPerPage;
+    const currentReviewed = reviewed.slice(reviewedStart, reviewedEnd);
+    
+    return {
+      reviewedPlans: reviewed,
+      totalReviewedPages: totalReviewed,
+      currentReviewedPlans: currentReviewed
+    };
+  }, [allPlans, reviewedPage, plansPerPage]);
   
   // Get activity type icon
   const getActivityIcon = (type: string) => {
@@ -640,7 +722,7 @@ const AdminDashboard: React.FC = () => {
               <LayoutGrid className="h-5 w-5 text-blue-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-blue-600">{stats.totalPlans}</p>
+          <p className="text-3xl font-bold text-blue-600">{calculateStats.totalPlans}</p>
           <p className="text-xs text-gray-500 mt-1">Submitted + Approved</p>
         </div>
 
@@ -651,7 +733,7 @@ const AdminDashboard: React.FC = () => {
               <Calendar className="h-5 w-5 text-amber-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-amber-600">{stats.submittedPlans}</p>
+          <p className="text-3xl font-bold text-amber-600">{calculateStats.submittedPlans}</p>
           <p className="text-xs text-gray-500 mt-1">Awaiting Review</p>
         </div>
 
@@ -662,7 +744,7 @@ const AdminDashboard: React.FC = () => {
               <CheckCircle className="h-5 w-5 text-green-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-green-600">{stats.approvedPlans}</p>
+          <p className="text-3xl font-bold text-green-600">{calculateStats.approvedPlans}</p>
           <p className="text-xs text-gray-500 mt-1">Successfully Reviewed</p>
         </div>
 
@@ -673,7 +755,7 @@ const AdminDashboard: React.FC = () => {
               <XCircle className="h-5 w-5 text-red-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-red-600">{stats.rejectedPlans}</p>
+          <p className="text-3xl font-bold text-red-600">{calculateStats.rejectedPlans}</p>
           <p className="text-xs text-gray-500 mt-1">Needs Revision</p>
         </div>
       </div>
@@ -687,7 +769,7 @@ const AdminDashboard: React.FC = () => {
               <DollarSign className="h-5 w-5 text-purple-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-purple-600">ETB {stats.totalBudgetAllOrgs.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-purple-600">ETB {calculateStats.totalBudgetAllOrgs.toLocaleString()}</p>
           <p className="text-xs text-gray-500 mt-1">Across all Executives</p>
         </div>
 
@@ -698,7 +780,7 @@ const AdminDashboard: React.FC = () => {
               <TrendingUp className="h-5 w-5 text-green-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-green-600">ETB {stats.totalFundingAllOrgs.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-green-600">ETB {calculateStats.totalFundingAllOrgs.toLocaleString()}</p>
           <p className="text-xs text-gray-500 mt-1">Total available funds</p>
         </div>
 
@@ -709,7 +791,7 @@ const AdminDashboard: React.FC = () => {
               <AlertCircle className="h-5 w-5 text-red-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-red-600">ETB {stats.totalGapAllOrgs.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-red-600">ETB {calculateStats.totalGapAllOrgs.toLocaleString()}</p>
           <p className="text-xs text-gray-500 mt-1">Total funding needed</p>
         </div>
       </div>
@@ -721,7 +803,7 @@ const AdminDashboard: React.FC = () => {
           Budget by Activity Type
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-          {Object.entries(stats.activityStats).map(([activityType, data]: [string, any]) => (
+          {Object.entries(calculateStats.activityStats).map(([activityType, data]: [string, any]) => (
             <div key={activityType} className="bg-gray-50 p-4 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center">
@@ -753,7 +835,7 @@ const AdminDashboard: React.FC = () => {
               data={{
                 labels: ['Approved', 'Submitted', 'Draft', 'Rejected'],
                 datasets: [{
-                  data: [stats.approvedPlans, stats.submittedPlans, stats.draftPlans, stats.rejectedPlans],
+                  data: [calculateStats.approvedPlans, calculateStats.submittedPlans, calculateStats.draftPlans, calculateStats.rejectedPlans],
                   backgroundColor: ['#059669', '#d97706', '#6b7280', '#dc2626'],
                   borderWidth: 3,
                   borderColor: '#ffffff',
@@ -796,16 +878,16 @@ const AdminDashboard: React.FC = () => {
             Budget by Executives
           </h3>
           <div className="h-80">
-            {Object.keys(stats.organizationStats).length > 0 ? (
+            {Object.keys(calculateStats.organizationStats).length > 0 ? (
               <Bar
                 data={{
-                  labels: Object.keys(stats.organizationStats).map(name => 
+                  labels: Object.keys(calculateStats.organizationStats).map(name => 
                     name.length > 15 ? name.substring(0, 15) + '...' : name
                   ),
                   datasets: [
                     {
                       label: 'Total Budget',
-                      data: Object.values(stats.organizationStats).map((org: any) => org.totalBudget),
+                      data: Object.values(calculateStats.organizationStats).map((org: any) => org.totalBudget),
                       backgroundColor: 'rgba(139, 92, 246, 0.8)',
                       borderColor: '#8b5cf6',
                       borderWidth: 2,
@@ -814,7 +896,7 @@ const AdminDashboard: React.FC = () => {
                     },
                     {
                       label: 'Available Funding',
-                      data: Object.values(stats.organizationStats).map((org: any) => org.availableFunding),
+                      data: Object.values(calculateStats.organizationStats).map((org: any) => org.availableFunding),
                       backgroundColor: 'rgba(16, 185, 129, 0.8)',
                       borderColor: '#10b981',
                       borderWidth: 2,
@@ -1194,17 +1276,17 @@ const AdminDashboard: React.FC = () => {
           Complete Budget Overview by Executives
         </h3>
         
-        {Object.keys(stats.organizationStats).length > 0 ? (
+        {Object.keys(calculateStats.organizationStats).length > 0 ? (
           <div className="h-96">
             <Bar
               data={{
-                labels: Object.keys(stats.organizationStats).map(name => 
+                labels: Object.keys(calculateStats.organizationStats).map(name => 
                   name.length > 20 ? name.substring(0, 20) + '...' : name
                 ),
                 datasets: [
                   {
                     label: 'Total Budget Required',
-                    data: Object.values(stats.organizationStats).map((org: any) => org.totalBudget),
+                    data: Object.values(calculateStats.organizationStats).map((org: any) => org.totalBudget),
                     backgroundColor: 'rgba(99, 102, 241, 0.8)',
                     borderColor: '#6366f1',
                     borderWidth: 2,
@@ -1213,7 +1295,7 @@ const AdminDashboard: React.FC = () => {
                   },
                   {
                     label: 'Available Funding',
-                    data: Object.values(stats.organizationStats).map((org: any) => org.availableFunding),
+                    data: Object.values(calculateStats.organizationStats).map((org: any) => org.availableFunding),
                     backgroundColor: 'rgba(34, 197, 94, 0.8)',
                     borderColor: '#22c55e',
                     borderWidth: 2,
@@ -1222,7 +1304,7 @@ const AdminDashboard: React.FC = () => {
                   },
                   {
                     label: 'Funding Gap',
-                    data: Object.values(stats.organizationStats).map((org: any) => org.fundingGap),
+                    data: Object.values(calculateStats.organizationStats).map((org: any) => org.fundingGap),
                     backgroundColor: 'rgba(239, 68, 68, 0.8)',
                     borderColor: '#ef4444',
                     borderWidth: 2,
@@ -1319,11 +1401,11 @@ const AdminDashboard: React.FC = () => {
             Executives Performance
           </h3>
           <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-            {Object.keys(stats.organizationStats).length} Organizations with Budget Data
+            {Object.keys(calculateStats.organizationStats).length} Organizations with Budget Data
           </div>
         </div>
 
-        {Object.keys(stats.organizationStats).length === 0 ? (
+        {Object.keys(calculateStats.organizationStats).length === 0 ? (
           <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
             <BarChart3 className="h-16 w-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No Budget Data Available</h3>
@@ -1368,7 +1450,7 @@ const AdminDashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {Object.entries(stats.organizationStats).map(([orgName, orgData]: [string, any]) => (
+                {Object.entries(calculateStats.organizationStats).map(([orgName, orgData]: [string, any]) => (
                   <tr key={orgName} className="hover:bg-blue-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
