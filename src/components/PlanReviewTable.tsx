@@ -164,6 +164,168 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     }
   }, [objectives, effectiveUserOrgId]);
 
+  // Convert objectives to table rows format (same as what's displayed in the table)
+  const convertObjectivesToTableRows = (objectives: StrategicObjective[]) => {
+    const tableRows: any[] = [];
+    let rowNumber = 1;
+
+    objectives.forEach((objective, objIndex) => {
+      const effectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
+      
+      if (!objective.initiatives || objective.initiatives.length === 0) {
+        // Objective with no initiatives
+        tableRows.push({
+          'No': rowNumber++,
+          'Strategic Objective': objective.title,
+          'Strategic Objective Weight': `${effectiveWeight.toFixed(1)}%`,
+          'Strategic Initiative': '-',
+          'Initiative Weight': '-',
+          'Performance Measure/Main Activity': '-',
+          'Weight': '-',
+          'Baseline': '-',
+          'Q1Target': '-',
+          'Q1Months': '-',
+          'Q2Target': '-',
+          'Q2Months': '-',
+          'SixMonthTarget': '-',
+          'Q3Target': '-',
+          'Q3Months': '-',
+          'Q4Target': '-',
+          'Q4Months': '-',
+          'AnnualTarget': '-',
+          'Implementor': organizationName,
+          'BudgetRequired': 0,
+          'Government': 0,
+          'Partners': 0,
+          'SDG': 0,
+          'Other': 0,
+          'TotalAvailable': 0,
+          'Gap': 0
+        });
+        return;
+      }
+
+      let objectiveAdded = false;
+      
+      objective.initiatives.forEach((initiative, initIndex) => {
+        const allItems = [
+          ...(initiative.performance_measures || []).map(item => ({ ...item, type: 'Performance Measure' })),
+          ...(initiative.main_activities || []).map(item => ({ ...item, type: 'Main Activity' }))
+        ];
+
+        if (allItems.length === 0) {
+          // Initiative with no items
+          tableRows.push({
+            'No': objectiveAdded ? '' : rowNumber++,
+            'Strategic Objective': objectiveAdded ? '' : objective.title,
+            'Strategic Objective Weight': objectiveAdded ? '' : `${effectiveWeight.toFixed(1)}%`,
+            'Strategic Initiative': initiative.name,
+            'Initiative Weight': `${initiative.weight}%`,
+            'Performance Measure/Main Activity': '-',
+            'Weight': '-',
+            'Baseline': '-',
+            'Q1Target': '-',
+            'Q1Months': '-',
+            'Q2Target': '-',
+            'Q2Months': '-',
+            'SixMonthTarget': '-',
+            'Q3Target': '-',
+            'Q3Months': '-',
+            'Q4Target': '-',
+            'Q4Months': '-',
+            'AnnualTarget': '-',
+            'Implementor': initiative.organization_name || organizationsMap[initiative.organization] || organizationName,
+            'BudgetRequired': 0,
+            'Government': 0,
+            'Partners': 0,
+            'SDG': 0,
+            'Other': 0,
+            'TotalAvailable': 0,
+            'Gap': 0
+          });
+          objectiveAdded = true;
+          return;
+        }
+
+        let initiativeAdded = false;
+
+        allItems.forEach((item, itemIndex) => {
+          // Calculate budget values for main activities
+          let budgetRequired = 0;
+          let government = 0;
+          let partners = 0;
+          let sdg = 0;
+          let other = 0;
+          let totalAvailable = 0;
+          let gap = 0;
+
+          if (item.type === 'Main Activity' && item.budget) {
+            budgetRequired = item.budget.budget_calculation_type === 'WITH_TOOL' 
+              ? Number(item.budget.estimated_cost_with_tool || 0)
+              : Number(item.budget.estimated_cost_without_tool || 0);
+            
+            government = Number(item.budget.government_treasury || 0);
+            partners = Number(item.budget.partners_funding || 0);
+            sdg = Number(item.budget.sdg_funding || 0);
+            other = Number(item.budget.other_funding || 0);
+            totalAvailable = government + partners + sdg + other;
+            gap = Math.max(0, budgetRequired - totalAvailable);
+          }
+
+          // Calculate 6-month target
+          const sixMonthTarget = item.target_type === 'cumulative' 
+            ? Number(item.q1_target || 0) + Number(item.q2_target || 0)
+            : Number(item.q2_target || 0);
+
+          // Get selected months for each quarter
+          const q1Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q1');
+          const q2Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q2');
+          const q3Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q3');
+          const q4Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q4');
+
+          // Add PM/MA prefix to name
+          const displayName = item.type === 'Performance Measure' 
+            ? `PM: ${item.name}` 
+            : `MA: ${item.name}`;
+
+          tableRows.push({
+            'No': objectiveAdded ? '' : (objIndex + 1),
+            'Strategic Objective': objectiveAdded ? '' : objective.title,
+            'Strategic Objective Weight': objectiveAdded ? '' : `${effectiveWeight.toFixed(1)}%`,
+            'Strategic Initiative': initiativeAdded ? '' : initiative.name,
+            'Initiative Weight': initiativeAdded ? '' : `${initiative.weight}%`,
+            'Performance Measure/Main Activity': displayName,
+            'Weight': `${item.weight}%`,
+            'Baseline': item.baseline || '-',
+            'Q1Target': item.q1_target || 0,
+            'Q1Months': q1Months,
+            'Q2Target': item.q2_target || 0,
+            'Q2Months': q2Months,
+            'SixMonthTarget': sixMonthTarget,
+            'Q3Target': item.q3_target || 0,
+            'Q3Months': q3Months,
+            'Q4Target': item.q4_target || 0,
+            'Q4Months': q4Months,
+            'AnnualTarget': item.annual_target || 0,
+            'Implementor': initiative.organization_name || organizationsMap[initiative.organization] || organizationName,
+            'BudgetRequired': budgetRequired,
+            'Government': government,
+            'Partners': partners,
+            'SDG': sdg,
+            'Other': other,
+            'TotalAvailable': totalAvailable,
+            'Gap': gap
+          });
+
+          objectiveAdded = true;
+          initiativeAdded = true;
+        });
+      });
+    });
+
+    return tableRows;
+  };
+
   const formatCurrency = (amount: number): string => {
     return `$${amount.toLocaleString()}`;
   };
@@ -230,32 +392,48 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   };
 
   const handleExportExcel = () => {
-    const exportData = processDataForExport(processedObjectives, 'en');
+    if (!processedObjectives || processedObjectives.length === 0) {
+      console.error('No objectives data available for export');
+      return;
+    }
+    
+    // Convert processed objectives to table rows format first
+    const tableRowsData = convertObjectivesToTableRows(processedObjectives);
+    console.log('Table rows for Excel export:', tableRowsData.length);
+    
     exportToExcel(
-      exportData,
+      tableRowsData,
       `plan-${new Date().toISOString().slice(0, 10)}`,
       'en',
       {
         organization: organizationName,
         planner: plannerName,
-        fromDate: fromDate,
-        toDate: toDate,
+        fromDate,
+        toDate,
         planType: planType
       }
     );
   };
 
   const handleExportPDF = () => {
-    const exportData = processDataForExport(processedObjectives, 'en');
+    if (!processedObjectives || processedObjectives.length === 0) {
+      console.error('No objectives data available for export');
+      return;
+    }
+    
+    // Convert processed objectives to table rows format first
+    const tableRowsData = convertObjectivesToTableRows(processedObjectives);
+    console.log('Table rows for PDF export:', tableRowsData.length);
+    
     exportToPDF(
-      exportData,
+      tableRowsData,
       `plan-${new Date().toISOString().slice(0, 10)}`,
       'en',
       {
         organization: organizationName,
         planner: plannerName,
-        fromDate: fromDate,
-        toDate: toDate,
+        fromDate,
+        toDate,
         planType: planType
       }
     );
