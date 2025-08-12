@@ -936,6 +936,40 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                           </div>
                           
                           {/* Budget Information */}
+                          <div className="mt-3">
+                            {subActivity.budget ? (
+                              <div className="space-y-1">
+                                <div className="text-sm font-medium text-green-600">
+                                  Budget: ${(subActivity.budget.budget_calculation_type === 'WITH_TOOL' 
+                                    ? Number(subActivity.budget.estimated_cost_with_tool || 0)
+                                    : Number(subActivity.budget.estimated_cost_without_tool || 0)).toLocaleString()}
+                                </div>
+                                <div className="text-xs text-blue-600">
+                                  Funding: ${(
+                                    Number(subActivity.budget.government_treasury || 0) +
+                                    Number(subActivity.budget.partners_funding || 0) +
+                                    Number(subActivity.budget.sdg_funding || 0) +
+                                    Number(subActivity.budget.other_funding || 0)
+                                  ).toLocaleString()}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  Gap: ${Math.max(0, 
+                                    (subActivity.budget.budget_calculation_type === 'WITH_TOOL' 
+                                      ? Number(subActivity.budget.estimated_cost_with_tool || 0)
+                                      : Number(subActivity.budget.estimated_cost_without_tool || 0)) -
+                                    (Number(subActivity.budget.government_treasury || 0) +
+                                     Number(subActivity.budget.partners_funding || 0) +
+                                     Number(subActivity.budget.sdg_funding || 0) +
+                                     Number(subActivity.budget.other_funding || 0))
+                                  ).toLocaleString()}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-sm text-gray-500">No budget</div>
+                            )}
+                          </div>
+                          
+                          {/* Budget Information */}
                           {subActivity.budget ? (
                             <div className="mt-3 p-3 bg-green-50 rounded-md border border-green-200">
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
