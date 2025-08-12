@@ -86,46 +86,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         response.data.forEach((org: any) => {
           orgMap[org.id] = org.name;
         });
-
-        // Process objectives to calculate budget from sub-activities
-        objectives.forEach((objective: any) => {
-          objective?.initiatives?.forEach((initiative: any) => {
-            initiative?.main_activities?.forEach((item: any) => {
-              // Calculate budget from sub-activities if they exist, otherwise use legacy budget
-              if (item.sub_activities && item.sub_activities.length > 0) {
-                // Aggregate budget from all sub-activities
-                item.sub_activities.forEach((subActivity: any) => {
-                  if (subActivity.budget) {
-                    const subBudgetRequired = subActivity.budget.budget_calculation_type === 'WITH_TOOL'
-                      ? Number(subActivity.budget.estimated_cost_with_tool || 0)
-                      : Number(subActivity.budget.estimated_cost_without_tool || 0);
-                    
-                    budgetRequired += subBudgetRequired;
-                    government += Number(subActivity.budget.government_treasury || 0);
-                    partners += Number(subActivity.budget.partners_funding || 0);
-                    sdg += Number(subActivity.budget.sdg_funding || 0);
-                    other += Number(subActivity.budget.other_funding || 0);
-                  }
-                });
-                
-                totalAvailable = government + partners + sdg + other;
-                gap = Math.max(0, budgetRequired - totalAvailable);
-              } else if (item.budget) {
-                // Use legacy budget if no sub-activities
-                budgetRequired = item.budget.budget_calculation_type === 'WITH_TOOL' 
-                  ? Number(item.budget.estimated_cost_with_tool || 0)
-                  : Number(item.budget.estimated_cost_without_tool || 0);
-                
-                government = Number(item.budget.government_treasury || 0);
-                partners = Number(item.budget.partners_funding || 0);
-                sdg = Number(item.budget.sdg_funding || 0);
-                other = Number(item.budget.other_funding || 0);
-                totalAvailable = government + partners + sdg + other;
-                gap = Math.max(0, budgetRequired - totalAvailable);
-              }
-            });
-          });
-        });
         
         setOrganizationsMap(orgMap);
       } catch (error) {
@@ -202,7 +162,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   // Convert objectives to table rows format (same as what's displayed in the table)
   const convertObjectivesToTableRows = (objectives: StrategicObjective[]) => {
     const tableRows: any[] = [];
-    let rowNumber = 1;
 
     objectives.forEach((objective, objIndex) => {
       const effectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
@@ -210,7 +169,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       if (!objective.initiatives || objective.initiatives.length === 0) {
         // Objective with no initiatives
         tableRows.push({
-          'No': rowNumber++,
+          'No': objIndex + 1,
           'Strategic Objective': objective.title,
           'Strategic Objective Weight': `${effectiveWeight.toFixed(1)}%`,
           'Strategic Initiative': '-',
@@ -242,7 +201,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
       let objectiveAdded = false;
       
-      objective.initiatives.forEach((initiative, initIndex) => {
+      objective.initiatives.forEach((initiative) => {
         const allItems = [
           ...(initiative.performance_measures || []).map(item => ({ ...item, type: 'Performance Measure' })),
           ...(initiative.main_activities || []).map(item => ({ ...item, type: 'Main Activity' }))
@@ -251,7 +210,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         if (allItems.length === 0) {
           // Initiative with no items
           tableRows.push({
-            'No': objectiveAdded ? '' : rowNumber++,
+            'No': objectiveAdded ? '' : (objIndex + 1),
             'Strategic Objective': objectiveAdded ? '' : objective.title,
             'Strategic Objective Weight': objectiveAdded ? '' : `${effectiveWeight.toFixed(1)}%`,
             'Strategic Initiative': initiative.name,
@@ -284,7 +243,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
         let initiativeAdded = false;
 
-        allItems.forEach((item, itemIndex) => {
+        allItems.forEach((item) => {
           // Calculate budget values for main activities
           let budgetRequired = 0;
           let government = 0;
@@ -295,21 +254,42 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           let gap = 0;
 
           if (item.type === 'Main Activity') {
-            // Calculate budget from sub-activities if they exist, otherwise use legacy budget
+            // Calculate budget from sub-activities if they exist
             if (item.sub_activities && item.sub_activities.length > 0) {
-              // Aggregate budget from all sub-activities
+              console.log(`Processing main activity "${item.name}" with ${item.sub_activities.length} sub-activities for table display`);
+              
+              
+              
               item.sub_activities.forEach((subActivity: any) => {
-                if (subActivity.budget) {
-                  const subBudgetRequired = subActivity.budget.budget_calculation_type === 'WITH_TOOL'
-                    ? Number(subActivity.budget.estimated_cost_with_tool || 0)
-                    : Number(subActivity.budget.estimated_cost_without_tool || 0);
-                  
-                  budgetRequired += subBudgetRequired;
-                  government += Number(subActivity.budget.government_treasury || 0);
-                  partners += Number(subActivity.budget.partners_funding || 0);
-                  sdg += Number(subActivity.budget.sdg_funding || 0);
-                  other += Number(subActivity.budget.other_funding || 0);
-                }
+                // Use direct SubActivity model fields
+                const subBudgetRequired = subActivity.budget_calculation_type === 'WITH_TOOL'
+                  ? Number(subActivity.estimated_cost_with_tool || 0)
+                  : Number(subActivity.estimated_cost_without_tool || 0);
+                
+                const subGov = Number(subActivity.government_treasury || 0);
+                const subPartners = Number(subActivity.partners_funding || 0);
+                const subSdg = Number(subActivity.sdg_funding || 0);
+                const subOther = Number(subActivity.other_funding || 0);
+                
+                console.log(`Table sub-activity "${subActivity.name}": budget=${subBudgetRequired}, gov=${subGov}, partners=${subPartners}, sdg=${subSdg}, other=${subOther}`);
+                
+                budgetRequired += subBudgetRequired;
+                government += subGov;
+                partners += subPartners;
+                sdg += subSdg;
+                other += subOther;
+                
+                budgetRequired += subBudgetRequired;
+                government += subGov;
+                partners += subPartners;
+                sdg += subSdg;
+                other += subOther;
+                
+                budgetRequired += subBudgetRequired;
+                government += subGov;
+                partners += subPartners;
+                sdg += subSdg;
+                other += subOther;
               });
               
               totalAvailable = government + partners + sdg + other;
@@ -346,7 +326,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
             : `MA: ${item.name}`;
 
           tableRows.push({
-            'No': objectiveAdded ? '' : (objIndex + 1),
+            'No': objectiveAdded ? '' : (objIndex + 1).toString(),
             'Strategic Objective': objectiveAdded ? '' : objective.title,
             'Strategic Objective Weight': objectiveAdded ? '' : `${effectiveWeight.toFixed(1)}%`,
             'Strategic Initiative': initiativeAdded ? '' : initiative.name,
@@ -373,7 +353,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
             'TotalAvailable': totalAvailable,
             'Gap': gap
           });
-
+          
           objectiveAdded = true;
           initiativeAdded = true;
         });
@@ -410,46 +390,41 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       processedObjectives.forEach((objective: any) => {
         objective?.initiatives?.forEach((initiative: any) => {
           initiative?.main_activities?.forEach((activity: any) => {
-            let budgetRequired = 0;
-            let government = 0;
-            let partners = 0;
-            let sdg = 0;
-            let other = 0;
+            let activityBudgetRequired = 0;
+            let activityGovernment = 0;
+            let activityPartners = 0;
+            let activitySdg = 0;
+            let activityOther = 0;
             
             // Calculate budget from sub-activities if they exist
-            if (activity?.sub_activities && activity.sub_activities.length > 0) {
-              // Aggregate budget from all sub-activities
-              activity.sub_activities.forEach((subActivity: any) => {
-                if (subActivity.budget) {
-                  const subCost = subActivity.budget.budget_calculation_type === 'WITH_TOOL'
-                    ? Number(subActivity.budget.estimated_cost_with_tool || 0)
-                    : Number(subActivity.budget.estimated_cost_without_tool || 0);
-                  
-                  budgetRequired += subCost;
-                  government += Number(subActivity.budget.government_treasury || 0);
-                  partners += Number(subActivity.budget.partners_funding || 0);
-                  sdg += Number(subActivity.budget.sdg_funding || 0);
-                  other += Number(subActivity.budget.other_funding || 0);
-                }
-              });
-            } else if (activity?.budget) {
-              // Use legacy budget if no sub-activities
-              budgetRequired = activity.budget.budget_calculation_type === 'WITH_TOOL' 
-                ? Number(activity.budget.estimated_cost_with_tool || 0) 
-                : Number(activity.budget.estimated_cost_without_tool || 0);
+            if (activity.sub_activities && activity.sub_activities.length > 0) {
+              console.log(`Totals calculation for activity "${activity.name}" with ${activity.sub_activities.length} sub-activities`);
               
-              government = Number(activity.budget.government_treasury || 0);
-              partners = Number(activity.budget.partners_funding || 0);
-              sdg = Number(activity.budget.sdg_funding || 0);
-              other = Number(activity.budget.other_funding || 0);
+              activity.sub_activities.forEach((subActivity: any) => {
+                // Use direct SubActivity model fields
+                const subCost = subActivity.budget_calculation_type === 'WITH_TOOL'
+                  ? Number(subActivity.estimated_cost_with_tool || 0)
+                  : Number(subActivity.estimated_cost_without_tool || 0);
+                
+                activityBudgetRequired += subCost;
+                activityGovernment += Number(subActivity.government_treasury || 0);
+                activityPartners += Number(subActivity.partners_funding || 0);
+                activitySdg += Number(subActivity.sdg_funding || 0);
+                activityOther += Number(subActivity.other_funding || 0);
+              activityBudgetRequired = activity.budget.budget_calculation_type === 'WITH_TOOL' 
+                ? Number(activity.budget.estimated_cost_with_tool || 0)
+              activityGovernment = Number(activity.budget.government_treasury || 0);
+              activityPartners = Number(activity.budget.partners_funding || 0);
+              activitySdg = Number(activity.budget.sdg_funding || 0);
+              activityOther = Number(activity.budget.other_funding || 0);
             }
             
             // Add to overall totals
-            total += budgetRequired;
-            governmentTotal += government;
-            partnersTotal += partners;
-            sdgTotal += sdg;
-            otherTotal += other;
+            total += activityBudgetRequired;
+            governmentTotal += activityGovernment;
+            partnersTotal += activityPartners;
+            sdgTotal += activitySdg;
+            otherTotal += activityOther;
           });
         });
       });
@@ -707,19 +682,19 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           objectiveWeight: objectiveAdded ? '' : `${effectiveWeight.toFixed(1)}%`,
           initiative: initiativeAdded ? '' : initiative.name,
           initiativeWeight: initiativeAdded ? '' : `${initiative.weight}%`,
-          itemName: displayName, // USING THE DISPLAY NAME WITH PREFIX
+          itemName: displayName,
           itemType: item.type,
           itemWeight: `${item.weight}%`,
           baseline: item.baseline || '-',
           q1Target: item.q1_target || 0,
-          q1Months: q1Months, // ACTUAL MONTHS FOR Q1
+          q1Months: q1Months,
           q2Target: item.q2_target || 0,
-          q2Months: q2Months, // ACTUAL MONTHS FOR Q2
+          q2Months: q2Months,
           sixMonthTarget: sixMonthTarget,
           q3Target: item.q3_target || 0,
-          q3Months: q3Months, // ACTUAL MONTHS FOR Q3
+          q3Months: q3Months,
           q4Target: item.q4_target || 0,
-          q4Months: q4Months, // ACTUAL MONTHS FOR Q4
+          q4Months: q4Months,
           annualTarget: item.annual_target || 0,
           implementor: initiative.organization_name || organizationsMap[initiative.organization] || organizationName,
           budgetRequired,
@@ -730,7 +705,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           totalAvailable,
           gap
         });
-
+          
         objectiveAdded = true;
         initiativeAdded = true;
       });
