@@ -348,8 +348,6 @@ const PlanSummary: React.FC = () => {
     objectives.forEach((objective, objIndex) => {
       if (!objective || !objective.id) return;
       
-      if (!objective) return;
-      
       // Get objective weight directly from database (effective_weight, planner_weight, or weight)
       const objectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
       
