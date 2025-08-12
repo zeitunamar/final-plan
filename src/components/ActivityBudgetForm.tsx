@@ -199,28 +199,11 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
       setError(null);
       setIsBudgetSubmitting(true);
 
-      // Make sure we have the correct estimated cost
-      // For WITH_TOOL, ensure estimated_cost_with_tool is positive
-      if (budgetCalculationType === 'WITH_TOOL') {
-        // Use the estimatedCost we calculated above, which checks multiple sources
-        if (estimatedCost <= 0) {
-          setError('Estimated cost must be greater than 0. Please recalculate using the costing tool.');
-          setIsBudgetSubmitting(false);
-          return;
-        }
-        // Set the value in the data object
-        data.estimated_cost_with_tool = estimatedCost;
-      }
-
-      // For WITHOUT_TOOL, ensure estimated_cost_without_tool is positive
-      if (budgetCalculationType === 'WITHOUT_TOOL') {
-        if (estimatedCost <= 0) {
-          setError('Estimated cost must be greater than 0');
-          setIsBudgetSubmitting(false);
-          return;
-        }
-        // Set the value in the data object
-        data.estimated_cost_without_tool = estimatedCost;
+      // Validate estimated cost
+      if (estimatedCost <= 0) {
+        setError(`Estimated cost must be greater than 0. Current: ${estimatedCost}`);
+        setIsBudgetSubmitting(false);
+        return;
       }
 
       // Calculate total partners funding
@@ -247,23 +230,22 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
         return;
       }
 
-      // Ensure we include all necessary fields
+      // Prepare budget data for SubActivity model (new structure)
       const budgetData = {
-        activity_id: activity.id,
-        activity: activity.id,  // Include both for compatibility
+        main_activity: activity.id,
+        name: data.name || `${activityType} Activity`,
+        activity_type: activityType || 'Other',
+        description: data.description || '',
         budget_calculation_type: budgetCalculationType,
-        activity_type: activityType || data.activity_type || 'Other',
         estimated_cost_with_tool: budgetCalculationType === 'WITH_TOOL' ? estimatedCost : 0,
         estimated_cost_without_tool: budgetCalculationType === 'WITHOUT_TOOL' ? estimatedCost : 0,
-        estimated_cost: estimatedCost,  // Add this to ensure the value is available
-        totalBudget: estimatedCost,     // Add this for redundancy
         government_treasury: Number(data.government_treasury),
         sdg_funding: Number(data.sdg_funding),
-        partners_funding: Number(data.partners_funding),
-        partners_list: partners.filter(p => p.name && p.amount > 0),  // Store only valid partners
+        partners_funding: calculatedPartnersFunding,
         other_funding: Number(data.other_funding),
         
-        // Make sure we preserve any existing tool-specific details
+        // Store tool-specific details and partners list
+        partners_details: { partners_list: partners.filter(p => p.name && p.amount > 0) },
         training_details: data.training_details || initialData?.training_details,
         meeting_workshop_details: data.meeting_workshop_details || initialData?.meeting_workshop_details,
         procurement_details: data.procurement_details || initialData?.procurement_details,
@@ -271,8 +253,7 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
         supervision_details: data.supervision_details || initialData?.supervision_details
       };
 
-      console.log("Submitting budget data:", budgetData);
-      console.log(`Final budget amount: ${estimatedCost} (${budgetCalculationType})`);
+      console.log("Submitting SubActivity data:", budgetData);
 
       // Submit budget data to parent component for saving
       await onSubmit(budgetData);

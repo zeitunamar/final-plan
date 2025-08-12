@@ -641,12 +641,12 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
               
               {/* Enhanced Budget Summary with Sub-Activities */}
               <div className="mt-3 p-3 bg-gray-50 rounded-md border border-gray-200">
-                <div className="flex items-center justify-between mb-2">
+                    <div className="text-lg font-medium text-green-600">${Number(activityTotals.totalFunding || 0).toLocaleString()}</div>
                   <div className="flex items-center">
                     <DollarSign className="h-4 w-4 text-green-600 mr-1" />
                     <span className="text-sm font-medium text-gray-700">Budget Summary</span>
-                  </div>
-                  <div className="text-sm font-medium text-green-600">
+                    <div className={`text-lg font-medium ${Number(activityTotals.fundingGap || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      ${Math.abs(Number(activityTotals.fundingGap || 0)).toLocaleString()}
                     Total: ${totalBudget.toLocaleString()}
                   </div>
                 </div>
