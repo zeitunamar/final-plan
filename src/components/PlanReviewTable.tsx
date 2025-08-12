@@ -46,6 +46,37 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   // Determine the effective user organization ID
   const effectiveUserOrgId = userOrgId || planData?.organization || null;
 
+  // Helper function to get selected months for a specific quarter
+  const getMonthsForQuarter = (selectedMonths: string[] | null, selectedQuarters: string[] | null, quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'): string => {
+    console.log(`Getting months for ${quarter}:`, { selectedMonths, selectedQuarters });
+    
+    if (!selectedMonths && !selectedQuarters) {
+      console.log(`No months or quarters selected for ${quarter}`);
+      return '-';
+    }
+    
+    // If quarters are selected, show all months in that quarter
+    if (selectedQuarters && Array.isArray(selectedQuarters) && selectedQuarters.includes(quarter)) {
+      const quarterMonths = MONTHS
+        .filter(month => month.quarter === quarter)
+        .map(month => month.value);
+      console.log(`Quarter ${quarter} selected, showing all months:`, quarterMonths);
+      return quarterMonths.join(', ');
+    }
+    
+    // If individual months are selected, show only selected months for that quarter
+    if (selectedMonths && Array.isArray(selectedMonths) && selectedMonths.length > 0) {
+      const quarterMonths = MONTHS
+        .filter(month => month.quarter === quarter && selectedMonths.includes(month.value))
+        .map(month => month.value);
+      console.log(`Individual months selected for ${quarter}:`, quarterMonths);
+      return quarterMonths.length > 0 ? quarterMonths.join(', ') : '-';
+    }
+    
+    console.log(`No valid selection for ${quarter}`);
+    return '-';
+  };
+
   // Fetch organizations for mapping names
   useEffect(() => {
     const fetchOrganizations = async () => {
@@ -146,45 +177,42 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
   };
 
   const calculateTotals = () => {
-    let totalRequired = 0;
-    let totalGovernment = 0;
-    let totalPartners = 0;
-    let totalSDG = 0;
-    let totalOther = 0;
+    let total = 0;
+    let governmentTotal = 0;
+    let sdgTotal = 0;
+    let partnersTotal = 0;
+    let otherTotal = 0;
 
-    processedObjectives.forEach(objective => {
-      objective.initiatives?.forEach(initiative => {
-        initiative.main_activities?.forEach(activity => {
-          if (activity.budget) {
-            const required = activity.budget.budget_calculation_type === 'WITH_TOOL' 
-              ? Number(activity.budget.estimated_cost_with_tool || 0)
+    if (!processedObjectives?.length) {
+      return { total, governmentTotal, sdgTotal, partnersTotal, otherTotal };
+    }
+
+    try {
+      processedObjectives.forEach((objective: any) => {
+        objective?.initiatives?.forEach((initiative: any) => {
+          initiative?.main_activities?.forEach((activity: any) => {
+            if (!activity?.budget) return;
+            
+            const cost = activity.budget.budget_calculation_type === 'WITH_TOOL' 
+              ? Number(activity.budget.estimated_cost_with_tool || 0) 
               : Number(activity.budget.estimated_cost_without_tool || 0);
             
-            totalRequired += required;
-            totalGovernment += Number(activity.budget.government_treasury || 0);
-            totalPartners += Number(activity.budget.partners_funding || 0);
-            totalSDG += Number(activity.budget.sdg_funding || 0);
-            totalOther += Number(activity.budget.other_funding || 0);
-          }
+            total += cost;
+            governmentTotal += Number(activity.budget.government_treasury || 0);
+            sdgTotal += Number(activity.budget.sdg_funding || 0);
+            partnersTotal += Number(activity.budget.partners_funding || 0);
+            otherTotal += Number(activity.budget.other_funding || 0);
+          });
         });
       });
-    });
+    } catch (e) {
+      console.error('Error calculating total budget:', e);
+    }
 
-    const totalAvailable = totalGovernment + totalPartners + totalSDG + totalOther;
-    const totalGap = Math.max(0, totalRequired - totalAvailable);
-
-    return {
-      totalRequired,
-      totalGovernment,
-      totalPartners,
-      totalSDG,
-      totalOther,
-      totalAvailable,
-      totalGap
-    };
+    return { total, governmentTotal, sdgTotal, partnersTotal, otherTotal };
   };
 
-  const totals = calculateTotals();
+  const budgetTotals = calculateTotals();
 
   const handleSubmitPlan = async () => {
     setIsSubmittingPlan(true);
@@ -274,10 +302,14 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         itemWeight: '-',
         baseline: '-',
         q1Target: '-',
+        q1Months: '-',
         q2Target: '-',
+        q2Months: '-',
         sixMonthTarget: '-',
         q3Target: '-',
+        q3Months: '-',
         q4Target: '-',
+        q4Months: '-',
         annualTarget: '-',
         implementor: organizationName,
         budgetRequired: 0,
@@ -312,10 +344,14 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           itemWeight: '-',
           baseline: '-',
           q1Target: '-',
+          q1Months: '-',
           q2Target: '-',
+          q2Months: '-',
           sixMonthTarget: '-',
           q3Target: '-',
+          q3Months: '-',
           q4Target: '-',
+          q4Months: '-',
           annualTarget: '-',
           implementor: initiative.organization_name || organizationsMap[initiative.organization] || organizationName,
           budgetRequired: 0,
@@ -360,7 +396,21 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           ? Number(item.q1_target || 0) + Number(item.q2_target || 0)
           : Number(item.q2_target || 0);
 
-        // Add prefix based on item type
+        // Get selected months for each quarter - WITH DEBUG LOGGING
+        console.log(`Processing item "${item.name}":`, {
+          selected_months: item.selected_months,
+          selected_quarters: item.selected_quarters,
+          type: item.type
+        });
+
+        const q1Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q1');
+        const q2Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q2');
+        const q3Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q3');
+        const q4Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q4');
+
+        console.log(`Calculated months for "${item.name}":`, { q1Months, q2Months, q3Months, q4Months });
+
+        // Add prefix based on item type - FIXED PREFIX LOGIC
         const displayName = item.type === 'Performance Measure' 
           ? `PM: ${item.name}` 
           : `MA: ${item.name}`;
@@ -371,15 +421,19 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           objectiveWeight: objectiveAdded ? '' : `${effectiveWeight.toFixed(1)}%`,
           initiative: initiativeAdded ? '' : initiative.name,
           initiativeWeight: initiativeAdded ? '' : `${initiative.weight}%`,
-          itemName: displayName,
+          itemName: displayName, // USING THE DISPLAY NAME WITH PREFIX
           itemType: item.type,
           itemWeight: `${item.weight}%`,
           baseline: item.baseline || '-',
           q1Target: item.q1_target || 0,
+          q1Months: q1Months, // ACTUAL MONTHS FOR Q1
           q2Target: item.q2_target || 0,
+          q2Months: q2Months, // ACTUAL MONTHS FOR Q2
           sixMonthTarget: sixMonthTarget,
           q3Target: item.q3_target || 0,
+          q3Months: q3Months, // ACTUAL MONTHS FOR Q3
           q4Target: item.q4_target || 0,
+          q4Months: q4Months, // ACTUAL MONTHS FOR Q4
           annualTarget: item.annual_target || 0,
           implementor: initiative.organization_name || organizationsMap[initiative.organization] || organizationName,
           budgetRequired,
@@ -465,7 +519,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gradient-to-r from-green-600 to-blue-600">
+            <thead className="bg-gradient-to-r from-blue-600 via-purple-600 to-green-600">
               <tr>
                 <th className="px-4 py-4 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">No.</th>
                 <th className="px-4 py-4 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Strategic Objective</th>
@@ -475,11 +529,23 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                 <th className="px-4 py-4 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">PM/MA Name</th>
                 <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Weight</th>
                 <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Baseline</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Q1 Target</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Q2 Target</th>
+                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">
+                  <div>Q1 Target</div>
+                  <div className="text-xs font-normal opacity-90">(Jul-Sep)</div>
+                </th>
+                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">
+                  <div>Q2 Target</div>
+                  <div className="text-xs font-normal opacity-90">(Oct-Dec)</div>
+                </th>
                 <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20 bg-blue-700">6-Month Target</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Q3 Target</th>
-                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Q4 Target</th>
+                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">
+                  <div>Q3 Target</div>
+                  <div className="text-xs font-normal opacity-90">(Jan-Mar)</div>
+                </th>
+                <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">
+                  <div>Q4 Target</div>
+                  <div className="text-xs font-normal opacity-90">(Apr-Jun)</div>
+                </th>
                 <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Annual Target</th>
                 <th className="px-4 py-4 text-left text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Implementor</th>
                 <th className="px-4 py-4 text-center text-xs font-bold text-white uppercase tracking-wider border-r border-white/20">Budget Required</th>
@@ -542,20 +608,20 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.baseline}</td>
                   <td className="px-4 py-3 text-sm text-center text-gray-900">
                     <div className="font-medium">{row.q1Target}</div>
-                    <div className="text-xs text-blue-600 mt-1">{row.q1Months}</div>
+                    <div className="text-xs text-blue-600 mt-1 font-medium">{row.q1Months}</div>
                   </td>
                   <td className="px-4 py-3 text-sm text-center text-gray-900">
                     <div className="font-medium">{row.q2Target}</div>
-                    <div className="text-xs text-blue-600 mt-1">{row.q2Months}</div>
+                    <div className="text-xs text-blue-600 mt-1 font-medium">{row.q2Months}</div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-center font-medium text-blue-600">{row.sixMonthTarget}</td>
                   <td className="px-4 py-3 text-sm text-center text-gray-900">
                     <div className="font-medium">{row.q3Target}</div>
-                    <div className="text-xs text-blue-600 mt-1">{row.q3Months}</div>
+                    <div className="text-xs text-blue-600 mt-1 font-medium">{row.q3Months}</div>
                   </td>
                   <td className="px-4 py-3 text-sm text-center text-gray-900">
                     <div className="font-medium">{row.q4Target}</div>
-                    <div className="text-xs text-blue-600 mt-1">{row.q4Months}</div>
+                    <div className="text-xs text-blue-600 mt-1 font-medium">{row.q4Months}</div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-center font-medium text-gray-900">{row.annualTarget}</td>
                   <td className="px-4 py-3 text-sm text-gray-500 max-w-xs">
@@ -590,32 +656,32 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
               ))}
 
               {/* Summary Row */}
-              {totals.totalRequired > 0 && (
+              {budgetTotals.total > 0 && (
                 <tr className="bg-blue-100 border-t-2 border-blue-300">
                   <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-900" colSpan={15}>
                     TOTAL BUDGET SUMMARY
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold text-gray-900">
-                    {formatCurrency(totals.totalRequired)}
+                    {formatCurrency(budgetTotals.total)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold text-blue-600">
-                    {formatCurrency(totals.totalGovernment)}
+                    {formatCurrency(budgetTotals.governmentTotal)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold text-purple-600">
-                    {formatCurrency(totals.totalPartners)}
+                    {formatCurrency(budgetTotals.partnersTotal)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold text-green-600">
-                    {formatCurrency(totals.totalSDG)}
+                    {formatCurrency(budgetTotals.sdgTotal)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold text-orange-600">
-                    {formatCurrency(totals.totalOther)}
+                    {formatCurrency(budgetTotals.otherTotal)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold text-blue-600">
-                    {formatCurrency(totals.totalAvailable)}
+                    {formatCurrency(budgetTotals.governmentTotal + budgetTotals.partnersTotal + budgetTotals.sdgTotal + budgetTotals.otherTotal)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-bold">
-                    {totals.totalGap > 0 ? (
-                      <span className="text-red-600">{formatCurrency(totals.totalGap)}</span>
+                    {(budgetTotals.total - (budgetTotals.governmentTotal + budgetTotals.partnersTotal + budgetTotals.sdgTotal + budgetTotals.otherTotal)) > 0 ? (
+                      <span className="text-red-600">{formatCurrency(budgetTotals.total - (budgetTotals.governmentTotal + budgetTotals.partnersTotal + budgetTotals.sdgTotal + budgetTotals.otherTotal))}</span>
                     ) : (
                       <span className="text-green-600">Fully Funded</span>
                     )}
@@ -628,7 +694,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       </div>
 
       {/* Budget Summary Cards */}
-      {totals.totalRequired > 0 && (
+      {budgetTotals.total > 0 && (
         <div className="bg-white p-6 rounded-lg border border-gray-200">
           <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
             <DollarSign className="h-5 w-5 mr-2 text-green-600" />
@@ -637,28 +703,30 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center p-4 bg-gray-50 rounded-lg">
               <div className="text-sm text-gray-500 mb-1">Required</div>
-              <div className="text-xl font-bold text-gray-900">{formatCurrency(totals.totalRequired)}</div>
+              <div className="text-xl font-bold text-gray-900">{formatCurrency(budgetTotals.total)}</div>
             </div>
             <div className="text-center p-4 bg-green-50 rounded-lg">
               <div className="text-sm text-gray-500 mb-1">Available</div>
-              <div className="text-xl font-bold text-green-600">{formatCurrency(totals.totalAvailable)}</div>
+              <div className="text-xl font-bold text-green-600">
+                {formatCurrency(budgetTotals.governmentTotal + budgetTotals.partnersTotal + budgetTotals.sdgTotal + budgetTotals.otherTotal)}
+              </div>
             </div>
             <div className="text-center p-4 bg-blue-50 rounded-lg">
               <div className="text-sm text-gray-500 mb-1">Government</div>
-              <div className="text-xl font-bold text-blue-600">{formatCurrency(totals.totalGovernment)}</div>
+              <div className="text-xl font-bold text-blue-600">{formatCurrency(budgetTotals.governmentTotal)}</div>
             </div>
             <div className="text-center p-4 bg-purple-50 rounded-lg">
               <div className="text-sm text-gray-500 mb-1">Partners</div>
-              <div className="text-xl font-bold text-purple-600">{formatCurrency(totals.totalPartners)}</div>
+              <div className="text-xl font-bold text-purple-600">{formatCurrency(budgetTotals.partnersTotal)}</div>
             </div>
           </div>
           
-          {totals.totalGap > 0 && (
+          {(budgetTotals.total - (budgetTotals.governmentTotal + budgetTotals.partnersTotal + budgetTotals.sdgTotal + budgetTotals.otherTotal)) > 0 && (
             <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
               <div className="flex items-center">
                 <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
                 <span className="text-sm font-medium text-red-700">
-                  Funding Gap: {formatCurrency(totals.totalGap)}
+                  Funding Gap: {formatCurrency(budgetTotals.total - (budgetTotals.governmentTotal + budgetTotals.partnersTotal + budgetTotals.sdgTotal + budgetTotals.otherTotal))}
                 </span>
               </div>
             </div>
