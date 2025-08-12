@@ -10,6 +10,7 @@ interface ActivityBudgetFormProps {
   activityType?: ActivityType | null;
   onSubmit: (data: any) => Promise<void>;
   initialData?: any;
+  costingToolData?: any;
   onCancel: () => void;
   isSubmitting?: boolean;
 }
@@ -20,6 +21,7 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
   activityType,
   onSubmit,
   initialData,
+  costingToolData,
   onCancel,
   isSubmitting = false
 }) => {
@@ -27,49 +29,36 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
   const [partners, setPartners] = useState<{name: string, amount: number}[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isBudgetSubmitting, setIsBudgetSubmitting] = useState(false);
-  const [initialRender, setInitialRender] = useState(true);
   
-  console.log("ActivityBudgetForm initialData:", initialData, 
-    initialData?.estimated_cost_with_tool || 0,
-    initialData?.estimated_cost_without_tool || 0);
-  console.log("Budget calculation type:", budgetCalculationType, "Activity type:", activityType);
+  // Use costing tool data if available, otherwise fall back to initialData
+  const effectiveInitialData = costingToolData || initialData;
   
-  // Calculate the effective estimated cost (for debugging)
+  console.log("ActivityBudgetForm data sources:", {
+    costingToolData: costingToolData ? 'available' : 'none',
+    initialData: initialData ? 'available' : 'none',
+    effectiveData: effectiveInitialData ? 'using' : 'none'
+  });
+  
   const effectiveEstimatedCost = budgetCalculationType === 'WITH_TOOL' 
-    ? (initialData?.estimated_cost_with_tool || 0) 
-    : (initialData?.estimated_cost_without_tool || 0);
-  
-  console.log("Effective estimated cost at component start:", effectiveEstimatedCost);
-  
-  // Extract all potential budget values for debugging
-  useEffect(() => {
-    if (initialData) {
-      console.log("Budget data analysis:", {
-        estimated_cost_with_tool: initialData.estimated_cost_with_tool,
-        estimated_cost_without_tool: initialData.estimated_cost_without_tool,
-        estimated_cost: initialData.estimated_cost,
-        totalBudget: initialData.totalBudget,
-        training_details_totalBudget: initialData.training_details?.totalBudget,
-      });
-    }
-  }, [initialData]);
+    ? (effectiveInitialData?.totalBudget || effectiveInitialData?.estimated_cost_with_tool || 0) 
+    : (effectiveInitialData?.estimated_cost_without_tool || 0);
   
   const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<any>({
     defaultValues: {
       activity: activity.id,
       budget_calculation_type: budgetCalculationType,
       activity_type: activityType,
-      estimated_cost_with_tool: initialData?.estimated_cost_with_tool || initialData?.totalBudget || 0,
-      estimated_cost_without_tool: initialData?.estimated_cost_without_tool || 0,
-      government_treasury: initialData?.government_treasury || 0,
-      sdg_funding: initialData?.sdg_funding || 0,
-      partners_funding: initialData?.partners_funding || 0,
-      other_funding: initialData?.other_funding || 0,
-      training_details: initialData?.training_details,
-      meeting_workshop_details: initialData?.meeting_workshop_details,
-      procurement_details: initialData?.procurement_details,
-      printing_details: initialData?.printing_details,
-      supervision_details: initialData?.supervision_details
+      estimated_cost_with_tool: effectiveInitialData?.totalBudget || effectiveInitialData?.estimated_cost_with_tool || 0,
+      estimated_cost_without_tool: effectiveInitialData?.estimated_cost_without_tool || 0,
+      government_treasury: effectiveInitialData?.government_treasury || 0,
+      sdg_funding: effectiveInitialData?.sdg_funding || 0,
+      partners_funding: effectiveInitialData?.partners_funding || 0,
+      other_funding: effectiveInitialData?.other_funding || 0,
+      training_details: effectiveInitialData?.training_details,
+      meeting_workshop_details: effectiveInitialData?.meeting_workshop_details,
+      procurement_details: effectiveInitialData?.procurement_details,
+      printing_details: effectiveInitialData?.printing_details,
+      supervision_details: effectiveInitialData?.supervision_details
     }
   });
 
@@ -137,12 +126,12 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
 
   // Initialize partners if they exist in the initial data
   useEffect(() => {
-    if (initialData?.partners_list && Array.isArray(initialData.partners_list) && initialData.partners_list.length > 0) {
-      setPartners(initialData.partners_list);
-    } else if (initialData?.partners_funding && Number(initialData.partners_funding) > 0) {
+    if (effectiveInitialData?.partners_list && Array.isArray(effectiveInitialData.partners_list) && effectiveInitialData.partners_list.length > 0) {
+      setPartners(effectiveInitialData.partners_list);
+    } else if (effectiveInitialData?.partners_funding && Number(effectiveInitialData.partners_funding) > 0) {
       // If we have partners_funding but no partners_list, create a default entry
       setPartners([
-        { name: 'Partners Funding', amount: Number(initialData.partners_funding) }
+        { name: 'Partners Funding', amount: Number(effectiveInitialData.partners_funding) }
       ]);
     } else {
       // Set default partners if none exist
@@ -152,7 +141,7 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
         { name: 'USAID', amount: 0 }
       ]);
     }
-  }, [initialData]);
+  }, [effectiveInitialData]);</action>
 
   // Calculate totals
   // Make sure we have valid numeric values
@@ -161,38 +150,18 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
   
   // Calculate estimated cost based on budget type, ensuring we get a positive number
   const estimatedCost = budgetCalculationType === 'WITH_TOOL' 
-    ? Math.max(withToolCost || 0, 
-              initialData?.estimated_cost_with_tool || 0, 
-              initialData?.totalBudget || 0,
-              initialData?.estimated_cost || 0)
-    : Math.max(withoutToolCost || 0, initialData?.estimated_cost_without_tool || 0);
+    ? Math.max(withToolCost || 0, effectiveInitialData?.totalBudget || 0, effectiveInitialData?.estimated_cost_with_tool || 0)
+    : Math.max(withoutToolCost || 0, effectiveInitialData?.estimated_cost_without_tool || 0);
               
   const fundingGap = Math.max(0, estimatedCost - totalFunding);
 
-  // Debug logging
-  useEffect(() => {
-    console.log("Budget Form Values:", {
-      partners,
-      initialData,
-      budgetCalculationType,
-      withToolCost,
-      withoutToolCost,
-      estimatedCost,
-      totalFunding,
-      fundingGap,
-      activityType
-    });
-  }, [
-    partners,
-    initialData,
-    budgetCalculationType, 
-    withToolCost, 
-    withoutToolCost,
+  console.log("Budget calculations:", {
+    budgetCalculationType,
+    effectiveEstimatedCost,
     totalFunding,
-    estimatedCost,
     fundingGap,
-    activityType
-  ]);
+    partners: partners.length
+  });</action>
 
   const handleFormSubmit = async (data: any) => {
     try {
@@ -233,13 +202,13 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
       // Prepare budget data for SubActivity model (new structure)
       const budgetData = {
         main_activity: activity.id,
-        name: data.name || `${activityType} Activity`,
+        name: costingToolData?.description || data.name || `${activityType} Activity`,
         activity_type: activityType || 'Other',
-        description: data.description || '',
+        description: costingToolData?.description || data.description || '',
         
         // Budget calculation details
         budget_calculation_type: budgetCalculationType,
-        estimated_cost_with_tool: Number(budgetCalculationType === 'WITH_TOOL' ? estimatedCost : 0),
+        estimated_cost_with_tool: Number(budgetCalculationType === 'WITH_TOOL' ? (costingToolData?.totalBudget || estimatedCost) : 0),
         estimated_cost_without_tool: Number(budgetCalculationType === 'WITHOUT_TOOL' ? estimatedCost : 0),
         
         // Funding sources
@@ -250,23 +219,14 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
         
         // Store tool-specific details and partners list
         partners_details: partners.length > 0 ? { partners_list: partners.filter(p => p.name && p.amount > 0) } : null,
-        training_details: data.training_details || initialData?.training_details,
-        meeting_workshop_details: data.meeting_workshop_details || initialData?.meeting_workshop_details,
-        procurement_details: data.procurement_details || initialData?.procurement_details,
-        printing_details: data.printing_details || initialData?.printing_details,
-        supervision_details: data.supervision_details || initialData?.supervision_details
+        training_details: costingToolData?.training_details || data.training_details || initialData?.training_details,
+        meeting_workshop_details: costingToolData?.meeting_workshop_details || data.meeting_workshop_details || initialData?.meeting_workshop_details,
+        procurement_details: costingToolData?.procurement_details || data.procurement_details || initialData?.procurement_details,
+        printing_details: costingToolData?.printing_details || data.printing_details || initialData?.printing_details,
+        supervision_details: costingToolData?.supervision_details || data.supervision_details || initialData?.supervision_details
       };
 
-      console.log("Submitting SubActivity data with budget fields:", {
-        name: budgetData.name,
-        activity_type: budgetData.activity_type,
-        estimated_cost_with_tool: budgetData.estimated_cost_with_tool,
-        estimated_cost_without_tool: budgetData.estimated_cost_without_tool,
-        government_treasury: budgetData.government_treasury,
-        partners_funding: budgetData.partners_funding,
-        sdg_funding: budgetData.sdg_funding,
-        other_funding: budgetData.other_funding
-      });
+      console.log("Submitting SubActivity data:", budgetData);
 
       // Submit budget data to parent component for saving
       await onSubmit(budgetData);
@@ -343,19 +303,14 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
                 {activityType ? `Calculated using ${activityType} costing tool` : 'Calculated using costing tool'}
               </span>
               <span className="text-2xl font-bold text-green-600" data-testid="budget-amount">
-                ${Number(withToolCost).toLocaleString()}
+                ${Number(effectiveEstimatedCost).toLocaleString()}
               </span>
             </div>
             <input
               type="hidden"
               {...register('estimated_cost_with_tool')}
-              value={withToolCost}
-              defaultValue={initialData?.estimated_cost_with_tool || 0}
+              value={effectiveEstimatedCost}
             />
-            {/* Add debug info for troubleshooting */}
-            <div className="text-xs text-gray-400">
-              Initial value: {initialData?.estimated_cost_with_tool || 0}
-            </div>
           </div>
         ) : (
           <div>

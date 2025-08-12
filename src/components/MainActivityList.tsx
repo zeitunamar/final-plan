@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mainActivities, subActivities, activityBudgets } from '../lib/api';
-import { BarChart3, AlertCircle, CheckCircle, Edit, Trash2, Lock, PlusCircle, Building2, Info, DollarSign, Eye, Plus, Settings, Activity } from 'lucide-react';
+import { BarChart3, AlertCircle, CheckCircle, Edit, Trash2, Lock, PlusCircle, Building2, Info, DollarSign, Eye, Plus, Settings, Activity, Calculator } from 'lucide-react';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 import type { MainActivity, SubActivity, ActivityType } from '../types/plan';
 import { auth } from '../lib/api';
@@ -49,9 +49,11 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [showModal, setShowModal] = useState(false);
   const [selectedActivityType, setSelectedActivityType] = useState<ActivityType | null>(null);
+  const [showCostingTool, setShowCostingTool] = useState(false);
   const [isViewOnly, setIsViewOnly] = useState(false);
   const [selectedSubActivity, setSelectedSubActivity] = useState<any>(null);
   const [showBudgetForm, setShowBudgetForm] = useState(false);
+  const [costingToolData, setCostingToolData] = useState<any>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Fetch current user role and organization
@@ -101,44 +103,42 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
     let partners = 0;
     let sdg = 0;
     let other = 0;
-    let totalAvailable = 0;
-    let gap = 0;
     
     console.log('Calculating budget for activity:', activity.name);
     console.log('Sub-activities:', activity.sub_activities?.length || 0);
+    console.log('Legacy budget:', activity.budget ? 'exists' : 'none');
 
     try {
       // Calculate budget from sub-activities if they exist
       if (activity.sub_activities && activity.sub_activities.length > 0) {
         console.log('Using sub-activities for budget calculation');
         activity.sub_activities.forEach((subActivity: any) => {
-          if (subActivity) {
-            console.log('Processing sub-activity:', subActivity.name || 'Unnamed');
+          console.log('Processing sub-activity:', subActivity.name || 'Unnamed', subActivity);
             
-            const subCost = subActivity.budget_calculation_type === 'WITH_TOOL'
-              ? Number(subActivity.estimated_cost_with_tool || 0)
-              : Number(subActivity.estimated_cost_without_tool || 0);
+          // Use direct fields from SubActivity model
+          const subCost = subActivity.budget_calculation_type === 'WITH_TOOL'
+            ? Number(subActivity.estimated_cost_with_tool || 0)
+            : Number(subActivity.estimated_cost_without_tool || 0);
             
-            const subGov = Number(subActivity.government_treasury || 0);
-            const subPartners = Number(subActivity.partners_funding || 0);
-            const subSdg = Number(subActivity.sdg_funding || 0);
-            const subOther = Number(subActivity.other_funding || 0);
+          const subGov = Number(subActivity.government_treasury || 0);
+          const subPartners = Number(subActivity.partners_funding || 0);
+          const subSdg = Number(subActivity.sdg_funding || 0);
+          const subOther = Number(subActivity.other_funding || 0);
             
-            console.log('Sub-activity budget details:', {
-              name: subActivity.name,
-              cost: subCost,
-              government: subGov,
-              partners: subPartners,
-              sdg: subSdg,
-              other: subOther
-            });
+          console.log('Sub-activity budget details:', {
+            name: subActivity.name,
+            cost: subCost,
+            government: subGov,
+            partners: subPartners,
+            sdg: subSdg,
+            other: subOther
+          });
             
-            budgetRequired += subCost;
-            government += subGov;
-            partners += subPartners;
-            sdg += subSdg;
-            other += subOther;
-          }
+          budgetRequired += subCost;
+          government += subGov;
+          partners += subPartners;
+          sdg += subSdg;
+          other += subOther;
         });
       } else if (activity.budget) {
         console.log('Using legacy budget for calculation');
@@ -153,8 +153,8 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
         other = Number(activity.budget.other_funding || 0);
       }
 
-      totalAvailable = government + partners + sdg + other;
-      gap = Math.max(0, budgetRequired - totalAvailable);
+      const totalAvailable = government + partners + sdg + other;
+      const gap = Math.max(0, budgetRequired - totalAvailable);
       
       console.log('Final budget calculation:', {
         budgetRequired,
@@ -171,12 +171,12 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
 
     return {
       budgetRequired,
+      totalAvailable: government + partners + sdg + other,
       government,
       partners,
       sdg,
       other,
-      totalAvailable,
-      gap
+      gap: Math.max(0, budgetRequired - (government + partners + sdg + other))
     };
   };
 
@@ -219,39 +219,62 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
     setShowModal(false);
     setSelectedActivity(null);
     setSelectedActivityType(null);
+    setShowCostingTool(false);
     setShowBudgetForm(false);
     setSelectedSubActivity(null);
+    setCostingToolData(null);
   };
 
-  const handleCreateSubActivity = (activityType: ActivityType) => {
+  const handleCreateSubActivity = (activityType: ActivityType, activity: any) => {
     console.log('Creating sub-activity of type:', activityType);
+    setSelectedActivity(activity);
     setSelectedActivityType(activityType);
-    setShowBudgetForm(true);
+    setShowCostingTool(true); // Show costing tool first
+    setShowBudgetForm(false);
+  };
+
+  const handleCostingComplete = (costingData: any) => {
+    console.log('Costing tool completed with data:', costingData);
+    setCostingToolData(costingData);
+    setShowCostingTool(false);
+    setShowBudgetForm(true); // Now show budget form
+  };
+
+  const handleCostingCancel = () => {
+    setShowCostingTool(false);
+    setSelectedActivityType(null);
+    setCostingToolData(null);
   };
 
   const handleSubActivitySaved = async (subActivityData: any) => {
     try {
       console.log('Saving sub-activity with data:', subActivityData);
-      await subActivities.create(subActivityData);
+      const response = await subActivities.create(subActivityData);
+      console.log('Sub-activity created response:', response);
       
-      // Force refresh the main activities list to get updated sub-activities
+      // Force refresh data
       forceRefresh();
+      await refetch();
       
-      // Also refresh the modal data
-      if (selectedActivity) {
-        // Update the selected activity's sub-activities locally for immediate UI update
-        const updatedActivity = { ...selectedActivity };
-        if (!updatedActivity.sub_activities) {
-          updatedActivity.sub_activities = [];
-        }
-        updatedActivity.sub_activities.push(subActivityData);
-        setSelectedActivity(updatedActivity);
-      }
+      // Invalidate queries to force fresh data
+      queryClient.invalidateQueries({ queryKey: ['main-activities', initiativeId] });
       
       setShowBudgetForm(false);
       setSelectedActivityType(null);
+      setCostingToolData(null);
       
-      console.log('Sub-activity saved successfully, data refreshed');
+      // Close modal and reopen with fresh data
+      setTimeout(() => {
+        refetch().then(() => {
+          console.log('Data refreshed after sub-activity save');
+          // Find the updated activity and reopen modal
+          const refreshedActivity = activitiesList?.data?.find(act => act.id === selectedActivity.id);
+          if (refreshedActivity) {
+            setSelectedActivity(refreshedActivity);
+            setShowModal(true);
+          }
+        });
+      }, 500);
     } catch (error) {
       console.error('Failed to save sub-activity:', error);
     }
@@ -259,8 +282,19 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
 
   const handleDeleteSubActivity = async (subActivityId: string) => {
     try {
+      console.log('Deleting sub-activity:', subActivityId);
       await subActivities.delete(subActivityId);
       forceRefresh(); // Refresh data after deletion
+      
+      // Refresh modal data
+      setTimeout(() => {
+        refetch().then(() => {
+          const refreshedActivity = activitiesList?.data?.find(act => act.id === selectedActivity.id);
+          if (refreshedActivity) {
+            setSelectedActivity(refreshedActivity);
+          }
+        });
+      }, 500);
     } catch (error) {
       console.error('Failed to delete sub-activity:', error);
     }
@@ -491,12 +525,12 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium text-gray-600">Sub-Activities ({activity.sub_activities.length})</span>
-                      <span className="text-xs text-blue-600">Total Funding: ${totalAvailable.toLocaleString()}</span>
+                      <span className="text-xs text-blue-600">Funding: ${totalAvailable.toLocaleString()}</span>
                     </div>
                     
                     <div className="space-y-1">
                       {activity.sub_activities.slice(0, 3).map((subActivity: any) => {
-                        // Calculate sub-activity budget using new fields
+                        // Calculate sub-activity budget using direct SubActivity fields
                         const subBudget = subActivity.budget_calculation_type === 'WITH_TOOL'
                           ? Number(subActivity.estimated_cost_with_tool || 0)
                           : Number(subActivity.estimated_cost_without_tool || 0);
@@ -548,7 +582,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                     
                     {/* Summary Stats */}
                     <div className="mt-2 pt-2 border-t border-gray-200 grid grid-cols-2 gap-2 text-xs text-gray-500">
-                      <div>Budget Required: ${modalBudgetData.budgetRequired.toLocaleString()}</div>
+                      <div>Budget Required: ${budgetRequired.toLocaleString()}</div>
                       <div>Funding Available: ${totalAvailable.toLocaleString()}</div>
                       <div className="col-span-2">
                         <span className={`font-medium ${gap > 0 ? 'text-red-600' : 'text-green-600'}`}>
@@ -559,8 +593,25 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="text-xs text-gray-500 italic">
-                    No sub-activities configured
+                  <div className="text-center p-4 bg-gray-50 rounded border-2 border-dashed border-gray-200">
+                    <div className="text-xs text-gray-500 italic mb-2">No sub-activities configured</div>
+                    {isUserPlanner && (
+                      <div className="grid grid-cols-2 gap-1">
+                        {(['Training', 'Meeting', 'Workshop', 'Supervision'] as ActivityType[]).map((type) => (
+                          <button
+                            key={type}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCreateSubActivity(type, activity);
+                            }}
+                            className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 flex items-center justify-center"
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            {type}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -755,7 +806,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                         {(['Training', 'Meeting', 'Workshop', 'Supervision', 'Procurement', 'Printing', 'Other'] as ActivityType[]).map((type) => (
                           <button
                             key={type}
-                            onClick={() => handleCreateSubActivity(type)}
+                            onClick={() => handleCreateSubActivity(type, selectedActivity)}
                             className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 flex items-center justify-center transition-colors"
                           >
                             <Plus className="h-4 w-4 mr-1" />
@@ -783,7 +834,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                           ? Number(subActivity.estimated_cost_with_tool || 0)
                           : Number(subActivity.estimated_cost_without_tool || 0);
                         
-                        // Use direct fields from SubActivity model
+                        // Use direct funding fields from SubActivity model
                         const subGovernment = Number(subActivity.government_treasury || 0);
                         const subPartners = Number(subActivity.partners_funding || 0);
                         const subSdg = Number(subActivity.sdg_funding || 0);
@@ -879,15 +930,100 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
         </div>
       )}
 
+      {/* Costing Tool Modal */}
+      {showCostingTool && selectedActivityType && selectedActivity && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900 flex items-center">
+                <Calculator className="h-5 w-5 mr-2 text-blue-600" />
+                {selectedActivityType} Cost Calculator
+              </h3>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[80vh]">
+              {selectedActivityType === 'Training' && (
+                <TrainingCostingTool
+                  onCalculate={handleCostingComplete}
+                  onCancel={handleCostingCancel}
+                />
+              )}
+              {selectedActivityType === 'Meeting' && (
+                <MeetingWorkshopCostingTool
+                  onCalculate={handleCostingComplete}
+                  onCancel={handleCostingCancel}
+                />
+              )}
+              {selectedActivityType === 'Workshop' && (
+                <MeetingWorkshopCostingTool
+                  onCalculate={handleCostingComplete}
+                  onCancel={handleCostingCancel}
+                />
+              )}
+              {selectedActivityType === 'Printing' && (
+                <PrintingCostingTool
+                  onCalculate={handleCostingComplete}
+                  onCancel={handleCostingCancel}
+                />
+              )}
+              {selectedActivityType === 'Procurement' && (
+                <ProcurementCostingTool
+                  onCalculate={handleCostingComplete}
+                  onCancel={handleCostingCancel}
+                />
+              )}
+              {selectedActivityType === 'Supervision' && (
+                <SupervisionCostingTool
+                  onCalculate={handleCostingComplete}
+                  onCancel={handleCostingCancel}
+                />
+              )}
+              {selectedActivityType === 'Other' && (
+                <div className="text-center p-8">
+                  <Info className="h-12 w-12 text-blue-500 mx-auto mb-4" />
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">Manual Cost Entry</h4>
+                  <p className="text-gray-600 mb-4">For "Other" activities, you'll enter costs manually in the budget form.</p>
+                  <button
+                    onClick={() => handleCostingComplete({ totalBudget: 0, estimated_cost: 0 })}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  >
+                    Continue to Budget Form
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Budget Form Modal */}
       {showBudgetForm && selectedActivityType && selectedActivity && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <ActivityBudgetForm
-              activity={selectedActivity}
-              budgetCalculationType="WITH_TOOL"
-              activityType={selectedActivityType}
-              onSubmit={handleSubActivitySaved}
+          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900">Budget Sources for {selectedActivityType} Activity</h3>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[80vh]">
+              <ActivityBudgetForm
+                activity={selectedActivity}
+                budgetCalculationType="WITH_TOOL"
+                activityType={selectedActivityType}
+                onSubmit={handleSubActivitySaved}
+                initialData={costingToolData}
+                onCancel={() => {
+                  setShowBudgetForm(false);
+                  setSelectedActivityType(null);
+                  setCostingToolData(null);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default MainActivityList;</action>
               onCancel={() => {
                 setShowBudgetForm(false);
                 setSelectedActivityType(null);
