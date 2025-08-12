@@ -563,7 +563,7 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                     {row.itemWeight && row.itemWeight !== '-' && (
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         row.itemType === 'Performance Measure' ? 'bg-purple-100 text-purple-800' : 'bg-orange-100 text-orange-800'
-                      }`}>
+                      }}>
                         {row.itemWeight}
                       </span>
                     )}
