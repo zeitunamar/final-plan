@@ -3,7 +3,7 @@ from django.db import transaction
 from .models import (
     Organization, OrganizationUser, StrategicObjective, 
     Program, StrategicInitiative, PerformanceMeasure, MainActivity,
-    ActivityBudget, ActivityCostingAssumption, Plan, PlanReview, InitiativeFeed,
+    ActivityBudget, SubActivity, ActivityCostingAssumption, Plan, PlanReview, InitiativeFeed,
     Location, LandTransport, AirTransport, PerDiem, Accommodation,
     ParticipantCost, SessionCost, PrintingCost, SupervisorCost, ProcurementItem
 )
@@ -59,6 +59,8 @@ class ActivityBudgetSerializer(serializers.ModelSerializer):
     total_funding = serializers.SerializerMethodField()
     estimated_cost = serializers.SerializerMethodField()
     funding_gap = serializers.SerializerMethodField()
+    sub_activity_name = serializers.CharField(source='sub_activity.name', read_only=True)
+    sub_activity_type = serializers.CharField(source='sub_activity.activity_type', read_only=True)
     
     class Meta:
         model = ActivityBudget
@@ -73,14 +75,35 @@ class ActivityBudgetSerializer(serializers.ModelSerializer):
     def get_funding_gap(self, obj):
         return obj.funding_gap
 
+class SubActivitySerializer(serializers.ModelSerializer):
+    budget = ActivityBudgetSerializer(read_only=True)
+    main_activity_name = serializers.CharField(source='main_activity.name', read_only=True)
+    
+    class Meta:
+        model = SubActivity
+        fields = '__all__'
 class MainActivitySerializer(serializers.ModelSerializer):
     initiative_name = serializers.CharField(source='initiative.name', read_only=True)
     organization_name = serializers.CharField(source='organization.name', read_only=True)
-    budget = ActivityBudgetSerializer(read_only=True)
+    sub_activities = SubActivitySerializer(many=True, read_only=True)
+    total_budget = serializers.SerializerMethodField()
+    total_funding = serializers.SerializerMethodField()
+    funding_gap = serializers.SerializerMethodField()
+    # Keep legacy budget field for backward compatibility
+    budget = ActivityBudgetSerializer(read_only=True, source='legacy_budgets.first')
     
     class Meta:
         model = MainActivity
         fields = '__all__'
+    
+    def get_total_budget(self, obj):
+        return obj.total_budget
+    
+    def get_total_funding(self, obj):
+        return obj.total_funding
+    
+    def get_funding_gap(self, obj):
+        return obj.funding_gap
 
 class ActivityCostingAssumptionSerializer(serializers.ModelSerializer):
     class Meta:

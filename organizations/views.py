@@ -15,14 +15,14 @@ import json
 from .models import (
     Organization, OrganizationUser, StrategicObjective, 
     Program, StrategicInitiative, PerformanceMeasure, MainActivity,
-    ActivityBudget, ActivityCostingAssumption, Plan, PlanReview, InitiativeFeed,
+    ActivityBudget, SubActivity, ActivityCostingAssumption, Plan, PlanReview, InitiativeFeed,
     Location, LandTransport, AirTransport, PerDiem, Accommodation,
     ParticipantCost, SessionCost, PrintingCost, SupervisorCost, ProcurementItem
 )
 from .serializers import (
     OrganizationSerializer, OrganizationUserSerializer, StrategicObjectiveSerializer,
     ProgramSerializer, StrategicInitiativeSerializer, PerformanceMeasureSerializer,
-    MainActivitySerializer, ActivityBudgetSerializer, ActivityCostingAssumptionSerializer,
+    MainActivitySerializer, SubActivitySerializer, ActivityBudgetSerializer, ActivityCostingAssumptionSerializer,
     PlanSerializer, PlanReviewSerializer, InitiativeFeedSerializer,
     LocationSerializer, LandTransportSerializer, AirTransportSerializer,
     PerDiemSerializer, AccommodationSerializer, ParticipantCostSerializer,
@@ -529,7 +529,7 @@ class MainActivityViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def update_budget(self, request, pk=None):
-        """Update or create budget for a main activity"""
+        """Update or create budget for a main activity (legacy endpoint)"""
         try:
             activity = self.get_object()
             budget_data = request.data
@@ -556,6 +556,89 @@ class MainActivityViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+class SubActivityViewSet(viewsets.ModelViewSet):
+    queryset = SubActivity.objects.all()
+    serializer_class = SubActivitySerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = SubActivity.objects.all()
+        main_activity = self.request.query_params.get('main_activity', None)
+        if main_activity is not None:
+            queryset = queryset.filter(main_activity=main_activity)
+        return queryset
+    
+    @action(detail=True, methods=['post'])
+    def add_budget(self, request, pk=None):
+        """Add budget for a sub-activity"""
+        try:
+            sub_activity = self.get_object()
+            budget_data = request.data
+            
+            # Create budget for this sub-activity
+            budget = ActivityBudget.objects.create(
+                sub_activity=sub_activity,
+                **budget_data
+            )
+            
+            serializer = ActivityBudgetSerializer(budget)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['put'])
+    def update_budget(self, request, pk=None):
+        """Update budget for a sub-activity"""
+        try:
+            sub_activity = self.get_object()
+            budget_data = request.data
+            
+            # Get or create the budget
+            budget, created = ActivityBudget.objects.get_or_create(
+                sub_activity=sub_activity,
+                defaults=budget_data
+            )
+            
+            if not created:
+                # Update existing budget
+                for key, value in budget_data.items():
+                    if hasattr(budget, key):
+                        setattr(budget, key, value)
+                budget.save()
+            
+            serializer = ActivityBudgetSerializer(budget)
+            return Response(serializer.data)
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['delete'])
+    def delete_budget(self, request, pk=None):
+        """Delete budget for a sub-activity"""
+        try:
+            sub_activity = self.get_object()
+            
+            if hasattr(sub_activity, 'budget'):
+                sub_activity.budget.delete()
+                return Response({'message': 'Budget deleted successfully'})
+            else:
+                return Response(
+                    {'error': 'No budget found for this sub-activity'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+                
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 class ActivityBudgetViewSet(viewsets.ModelViewSet):
     queryset = ActivityBudget.objects.all()
     serializer_class = ActivityBudgetSerializer
@@ -563,8 +646,12 @@ class ActivityBudgetViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = ActivityBudget.objects.all()
+        sub_activity = self.request.query_params.get('sub_activity', None)
+        if sub_activity is not None:
+            queryset = queryset.filter(sub_activity=sub_activity)
+        # Keep legacy activity filtering for backward compatibility
         activity = self.request.query_params.get('activity', None)
-        if activity is not None:
+        if activity is not None and not sub_activity:
             queryset = queryset.filter(activity=activity)
         return queryset
 

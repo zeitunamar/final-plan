@@ -468,6 +468,26 @@ class MainActivity(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+    @property
+    def total_budget(self):
+        """Calculate total budget from all sub-activities"""
+        return sum(sub.budget.estimated_cost for sub in self.sub_activities.all() if hasattr(sub, 'budget'))
+    
+    @property 
+    def total_funding(self):
+        """Calculate total funding from all sub-activities"""
+        total = 0
+        for sub in self.sub_activities.all():
+            if hasattr(sub, 'budget'):
+                total += (sub.budget.government_treasury + sub.budget.sdg_funding + 
+                         sub.budget.partners_funding + sub.budget.other_funding)
+        return total
+    
+    @property
+    def funding_gap(self):
+        """Calculate total funding gap from all sub-activities"""
+        return max(0, self.total_budget - self.total_funding)
+    
     def clean(self):
         super().clean()
         
@@ -562,6 +582,42 @@ class MainActivity(models.Model):
         return self.name
 
 
+class SubActivity(models.Model):
+    """
+    Model for sub-activities under a main activity (e.g., training, meeting, workshop)
+    """
+    ACTIVITY_TYPES = [
+        ('Training', 'Training'),
+        ('Meeting', 'Meeting'),
+        ('Workshop', 'Workshop'),
+        ('Printing', 'Printing'),
+        ('Supervision', 'Supervision'),
+        ('Procurement', 'Procurement'),
+        ('Other', 'Other')
+    ]
+    
+    main_activity = models.ForeignKey(
+        MainActivity,
+        on_delete=models.CASCADE,
+        related_name='sub_activities'
+    )
+    name = models.CharField(max_length=255)
+    activity_type = models.CharField(
+        max_length=20,
+        choices=ACTIVITY_TYPES,
+        default='Other'
+    )
+    description = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.main_activity.name} - {self.name} ({self.activity_type})"
+    
+    class Meta:
+        verbose_name = "Sub Activity"
+        verbose_name_plural = "Sub Activities"
+        ordering = ['created_at']
 class ActivityBudget(models.Model):
     BUDGET_CALCULATION_TYPES = [
         ('WITH_TOOL', 'With Tool'),
@@ -578,10 +634,18 @@ class ActivityBudget(models.Model):
         ('Other', 'Other')
     ]
 
-    activity = models.OneToOneField(
-        'MainActivity',
+    sub_activity = models.OneToOneField(
+        'SubActivity',
         on_delete=models.CASCADE,
         related_name='budget'
+    )
+    # Keep activity field for backward compatibility during migration
+    activity = models.ForeignKey(
+        'MainActivity',
+        on_delete=models.CASCADE,
+        related_name='legacy_budgets',
+        null=True,
+        blank=True
     )
     budget_calculation_type = models.CharField(
         max_length=20,
@@ -662,7 +726,12 @@ class ActivityBudget(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Budget for {self.activity.name}"
+        if self.sub_activity:
+            return f"Budget for {self.sub_activity.main_activity.name} - {self.sub_activity.name}"
+        elif self.activity:
+            return f"Budget for {self.activity.name} (Legacy)"
+        else:
+            return "Budget (No Activity)"
 
     @property
     def total_funding(self):

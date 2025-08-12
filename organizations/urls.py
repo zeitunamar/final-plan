@@ -4,7 +4,7 @@ from .views import (
     OrganizationViewSet, StrategicObjectiveViewSet,
     ProgramViewSet, StrategicInitiativeViewSet,
     PerformanceMeasureViewSet, MainActivityViewSet,
-    ActivityBudgetViewSet, ActivityCostingAssumptionViewSet,
+    ActivityBudgetViewSet, SubActivityViewSet, ActivityCostingAssumptionViewSet,
     PlanViewSet, PlanReviewViewSet, InitiativeFeedViewSet,
     LocationViewSet, LandTransportViewSet, AirTransportViewSet,
     PerDiemViewSet, AccommodationViewSet, ParticipantCostViewSet,
@@ -21,6 +21,7 @@ router.register(r'programs', ProgramViewSet)
 router.register(r'strategic-initiatives', StrategicInitiativeViewSet)
 router.register(r'performance-measures', PerformanceMeasureViewSet)
 router.register(r'main-activities', MainActivityViewSet)
+router.register(r'sub-activities', SubActivityViewSet)
 router.register(r'activity-budgets', ActivityBudgetViewSet)
 router.register(r'activity-costing-assumptions', ActivityCostingAssumptionViewSet)
 router.register(r'plans', PlanViewSet)
@@ -52,4 +53,8 @@ urlpatterns = [
     path('auth/password_change/', csrf_protect(password_change), name='password_change'),
     # Add custom budget update endpoint
     path('main-activities/<str:pk>/budget/', MainActivityViewSet.as_view({'post': 'update_budget'}), name='activity-budget-update'),
+    # Add sub-activity budget endpoints
+    path('sub-activities/<str:pk>/add-budget/', SubActivityViewSet.as_view({'post': 'add_budget'}), name='sub-activity-add-budget'),
+    path('sub-activities/<str:pk>/update-budget/', SubActivityViewSet.as_view({'put': 'update_budget'}), name='sub-activity-update-budget'),
+    path('sub-activities/<str:pk>/delete-budget/', SubActivityViewSet.as_view({'delete': 'delete_budget'}), name='sub-activity-delete-budget'),
 ]
