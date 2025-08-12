@@ -233,6 +233,32 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     );
   };
 
+  // Helper function to get months for a quarter
+  const getMonthsForQuarter = (selectedMonths: string[], selectedQuarters: string[], quarter: string): string => {
+    if (selectedQuarters.includes(quarter)) {
+      const quarterMonths = {
+        'Q1': ['January', 'February', 'March'],
+        'Q2': ['April', 'May', 'June'],
+        'Q3': ['July', 'August', 'September'],
+        'Q4': ['October', 'November', 'December']
+      };
+      return quarterMonths[quarter as keyof typeof quarterMonths].join(', ');
+    }
+    
+    const quarterMonths = {
+      'Q1': ['January', 'February', 'March'],
+      'Q2': ['April', 'May', 'June'],
+      'Q3': ['July', 'August', 'September'],
+      'Q4': ['October', 'November', 'December']
+    };
+    
+    const relevantMonths = selectedMonths.filter(month => 
+      quarterMonths[quarter as keyof typeof quarterMonths].includes(month)
+    );
+    
+    return relevantMonths.join(', ') || '';
+  };
+
   // Show loading if no organization context
   if (!effectiveUserOrgId) {
     return (
@@ -365,11 +391,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         const q2Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q2');
         const q3Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q3');
         const q4Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q4');
-
-        // Add prefix based on item type
-        const displayName = allItems.indexOf(item) < (initiative.performance_measures?.length || 0)
-          ? `PM: ${item.name}` 
-          : `MA: ${item.name}`;
 
         // Add prefix based on item type
         const displayName = item.type === 'Performance Measure' 
