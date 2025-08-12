@@ -272,17 +272,44 @@ const PlanSummary: React.FC = () => {
       processedPlanData.objectives.forEach((objective: any) => {
         objective?.initiatives?.forEach((initiative: any) => {
           initiative?.main_activities?.forEach((activity: any) => {
-            if (!activity?.budget) return;
+            let activityBudgetRequired = 0;
+            let activityGovernment = 0;
+            let activityPartners = 0;
+            let activitySdg = 0;
+            let activityOther = 0;
             
-            const cost = activity.budget.budget_calculation_type === 'WITH_TOOL' 
-              ? Number(activity.budget.estimated_cost_with_tool || 0) 
-              : Number(activity.budget.estimated_cost_without_tool || 0);
+            // Calculate budget from sub-activities if they exist
+            if (activity.sub_activities && activity.sub_activities.length > 0) {
+              activity.sub_activities.forEach((subActivity: any) => {
+                // Use direct SubActivity model fields
+                const subCost = subActivity.budget_calculation_type === 'WITH_TOOL'
+                  ? Number(subActivity.estimated_cost_with_tool || 0)
+                  : Number(subActivity.estimated_cost_without_tool || 0);
+                
+                activityBudgetRequired += subCost;
+                activityGovernment += Number(subActivity.government_treasury || 0);
+                activityPartners += Number(subActivity.partners_funding || 0);
+                activitySdg += Number(subActivity.sdg_funding || 0);
+                activityOther += Number(subActivity.other_funding || 0);
+              });
+            } else if (activity.budget) {
+              // Use legacy budget if no sub-activities
+              activityBudgetRequired = activity.budget.budget_calculation_type === 'WITH_TOOL' 
+                ? Number(activity.budget.estimated_cost_with_tool || 0) 
+                : Number(activity.budget.estimated_cost_without_tool || 0);
+              
+              activityGovernment = Number(activity.budget.government_treasury || 0);
+              activityPartners = Number(activity.budget.partners_funding || 0);
+              activitySdg = Number(activity.budget.sdg_funding || 0);
+              activityOther = Number(activity.budget.other_funding || 0);
+            }
             
-            total += cost;
-            governmentTotal += Number(activity.budget.government_treasury || 0);
-            sdgTotal += Number(activity.budget.sdg_funding || 0);
-            partnersTotal += Number(activity.budget.partners_funding || 0);
-            otherTotal += Number(activity.budget.other_funding || 0);
+            // Add to overall totals
+            total += activityBudgetRequired;
+            governmentTotal += activityGovernment;
+            sdgTotal += activitySdg;
+            partnersTotal += activityPartners;
+            otherTotal += activityOther;
           });
         });
       });
@@ -958,41 +985,42 @@ const PlanSummary: React.FC = () => {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h3 className="text-sm font-medium text-gray-500">Total Objectives</h3>
-              <p className="mt-2 text-3xl font-semibold text-gray-900">
-                {filteredPlanData.objectives?.length || 0}
-              </p>
-            </div>
-            
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h3 className="text-sm font-medium text-gray-500">Total Initiatives</h3>
-              <p className="mt-2 text-3xl font-semibold text-gray-900">
-                {filteredPlanData.objectives?.reduce((total: number, obj: any) => 
-                  total + (obj?.initiatives?.length || 0), 0) || 0}
-              </p>
-            </div>
-            
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <h3 className="text-sm font-medium text-gray-500">Total Activities</h3>
-              <p className="mt-2 text-3xl font-semibold text-gray-900">
-                {filteredPlanData.objectives?.reduce((total: number, obj: any) => 
-                  total + (obj?.initiatives?.reduce((sum: number, init: any) => 
-                    sum + (init?.main_activities?.length || 0), 0) || 0), 0) || 0}
-              </p>
-            </div>
-
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
-              <div className="flex flex-col">
-                <h3 className="text-sm font-medium text-gray-500">Total Budget</h3>
-                <p className="mt-2 text-3xl font-semibold text-green-600">
-                  ${budgetTotals.total.toLocaleString()}
+            filteredPlanData.status === 'REJECTED' ? 'bg-red-50 border border-red-200' : 
+            'bg-gray-50 border border-gray-200'
+          }`}>
+            <div className="flex items-start">
+              {filteredPlanData.status === 'APPROVED' ? (
+                <CheckCircle className="h-5 w-5 mr-2 text-green-500 mt-0.5" />
+              ) : filteredPlanData.status === 'REJECTED' ? (
+                <XCircle className="h-5 w-5 mr-2 text-red-500 mt-0.5" />
+              ) : (
+                <div className="h-5 w-5 mr-2" />
+              )}
+              <div>
+                <p className={`font-medium ${
+                  filteredPlanData.status === 'APPROVED' ? 'text-green-700' : 
+                  filteredPlanData.status === 'REJECTED' ? 'text-red-700' : 
+                  'text-gray-700'
+                }`}>
+                  {filteredPlanData.status === 'APPROVED' ? 'Plan Approved' : 
+                   filteredPlanData.status === 'REJECTED' ? 'Plan Rejected' :
+                   'Pending Review'}
                 </p>
+                {filteredPlanData.reviews[0]?.feedback && (
+                  <p className="mt-1 text-gray-600">
+                    {filteredPlanData.reviews[0].feedback}
+                  </p>
+                )}
+                {filteredPlanData.reviews[0]?.reviewed_at && (
+                  <p className="mt-2 text-sm text-gray-500">
+                    Reviewed on {formatDate(filteredPlanData.reviews[0].reviewed_at)} by {filteredPlanData.reviews[0].evaluator_name || 'Evaluator'}
+                  </p>
+                )}
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {showReviewForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">

@@ -718,16 +718,16 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       <div className="bg-gradient-to-r from-green-50 to-blue-50 p-6 rounded-lg border border-gray-200">
         <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
           <Building2 className="h-6 w-6 mr-2 text-green-600" />
-          {organizationName} - Strategic Plan
+          {organizationName || 'Organization'} - Strategic Plan
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
             <span className="text-gray-500">Planner:</span>
-            <div className="font-medium">{plannerName}</div>
+            <div className="font-medium">{plannerName || 'Not specified'}</div>
           </div>
           <div>
             <span className="text-gray-500">Plan Type:</span>
-            <div className="font-medium">{planType}</div>
+            <div className="font-medium">{planType || 'Not specified'}</div>
           </div>
           <div>
             <span className="text-gray-500">From:</span>
