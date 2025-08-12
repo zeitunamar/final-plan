@@ -77,11 +77,25 @@ export interface MainActivity {
   annual_target: number;
   selected_months: string[];
   selected_quarters: string[];
-  budget?: ActivityBudget;
+  sub_activities?: SubActivity[];
+  total_budget?: number;
+  total_funding?: number;
+  funding_gap?: number;
+  budget?: ActivityBudget; // Legacy field for backward compatibility
   created_at?: string;
   updated_at?: string;
 }
 
+export interface SubActivity {
+  id: string;
+  main_activity: string;
+  name: string;
+  activity_type: ActivityType;
+  description?: string;
+  budget?: ActivityBudget;
+  created_at?: string;
+  updated_at?: string;
+}
 export interface PerformanceMeasure {
   id: string;
   initiative: string;

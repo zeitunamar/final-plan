@@ -1345,6 +1345,19 @@ export const activityBudgets = {
   }
 };
 
+// Sub Activities API
+export const subActivities = {
+  getAll: () => api.get('/sub-activities/'),
+  getById: (id: string) => api.get(`/sub-activities/${id}/`),
+  create: (data: any) => api.post('/sub-activities/', data),
+  update: (id: string, data: any) => api.put(`/sub-activities/${id}/`, data),
+  delete: (id: string) => api.delete(`/sub-activities/${id}/`),
+  getByMainActivity: (mainActivityId: string) => api.get('/sub-activities/', { params: { main_activity: mainActivityId } }),
+  addBudget: (id: string, data: any) => api.post(`/sub-activities/${id}/add-budget/`, data),
+  updateBudget: (id: string, data: any) => api.put(`/sub-activities/${id}/update-budget/`, data),
+  deleteBudget: (id: string) => api.delete(`/sub-activities/${id}/delete-budget/`)
+};
+
 // Plans service
 export const plans = {
   async getAll() {

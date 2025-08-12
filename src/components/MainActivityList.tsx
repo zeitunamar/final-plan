@@ -309,29 +309,65 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
             </div>
             
             {/* Budget Summary */}
-            {activity.budget && (
+            {(activity.sub_activities && activity.sub_activities.length > 0) || activity.budget ? (
               <div className="mt-3 p-3 bg-gray-50 rounded-md border border-gray-200">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
                     <DollarSign className="h-4 w-4 text-green-600 mr-1" />
                     <span className="text-sm font-medium text-gray-700">Budget</span>
-                    {activity.budget.activity_type && (
+                    {activity.sub_activities && activity.sub_activities.length > 0 ? (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                        {activity.sub_activities.length} Sub-Activities
+                      </span>
+                    ) : activity.budget?.activity_type && (
                       <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                         {activity.budget.activity_type}
                       </span>
                     )}
                   </div>
+                  <div className="text-sm font-medium text-green-600">
+                    Total: ${(activity.total_budget || 0).toLocaleString()}
+                  </div>
                 </div>
+                
+                {/* Show sub-activities if available */}
+                {activity.sub_activities && activity.sub_activities.length > 0 ? (
+                  <div className="mt-2 space-y-1">
+                    {activity.sub_activities.map((subActivity, index) => (
+                      <div key={subActivity.id} className="flex justify-between items-center text-xs">
+                        <span className="text-gray-600">{subActivity.name} ({subActivity.activity_type}):</span>
+                        <span className="font-medium">${(subActivity.budget?.estimated_cost || 0).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : activity.budget && (
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-500">
+                    <div>Government: ${activity.budget.government_treasury.toLocaleString()}</div>
+                    <div>Partners: ${activity.budget.partners_funding.toLocaleString()}</div>
+                    <div>SDG: ${activity.budget.sdg_funding.toLocaleString()}</div>
+                    <div>Other: ${activity.budget.other_funding.toLocaleString()}</div>
+                  </div>
+                )}
+                
                 <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-500">
-                  <div>Government: ${activity.budget.government_treasury.toLocaleString()}</div>
-                  <div>Partners: ${activity.budget.partners_funding.toLocaleString()}</div>
-                  <div>SDG: ${activity.budget.sdg_funding.toLocaleString()}</div>
-                  <div>Other: ${activity.budget.other_funding.toLocaleString()}</div>
+                  <div>Total Funding: ${(activity.total_funding || 0).toLocaleString()}</div>
+                  <div>Gap: ${(activity.funding_gap || 0).toLocaleString()}</div>
                 </div>
                 
                 {/* Budget Action Buttons */}
                 {isUserPlanner && (
                   <div className="mt-3 flex justify-end space-x-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // TODO: Open sub-activities management modal
+                        console.log('Manage sub-activities for:', activity.name);
+                      }}
+                      className="text-xs text-green-600 hover:text-green-800 flex items-center px-2 py-1 bg-green-50 rounded"
+                    >
+                      <PlusCircle className="h-3 w-3 mr-1" />
+                      Sub-Activities
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -341,28 +377,6 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                     >
                       <Eye className="h-3 w-3 mr-1" />
                       View
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onEditBudget) onEditBudget(activity);
-                      }}
-                      className="text-xs text-purple-600 hover:text-purple-800 flex items-center px-2 py-1 bg-purple-50 rounded"
-                    >
-                      <Edit className="h-3 w-3 mr-1" />
-                      Edit
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (window.confirm('Are you sure you want to delete this budget? This action cannot be undone.')) {
-                          onDeleteBudget?.(activity.id);
-                        }
-                      }}
-                      className="text-xs text-red-600 hover:text-red-800 flex items-center px-2 py-1 bg-red-50 rounded"
-                    >
-                      <Trash2 className="h-3 w-3 mr-1" />
-                      Delete
                     </button>
                   </div>
                 )}
@@ -383,8 +397,8 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                     Edit
                   </button>
                   
-                  {/* Add Budget Button - Only show when no budget exists */}
-                  {!activity.budget && (
+                  {/* Add Budget Button - Only show when no sub-activities and no budget exists */}
+                  {!activity.sub_activities?.length && !activity.budget && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
