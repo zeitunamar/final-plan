@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useLanguage } from '../lib/i18n/LanguageContext';
-import { Loader, ArrowLeft, DollarSign, AlertCircle, Info, Plus, Trash2, Users } from 'lucide-react';
+import { Loader, ArrowLeft, DollarSign, AlertCircle, Info, Plus, Trash2, Users, CheckCircle } from 'lucide-react';
 import type { MainActivity, ActivityType, BudgetCalculationType } from '../types/plan';
 
 interface ActivityBudgetFormProps {
@@ -243,10 +243,10 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
         estimated_cost_without_tool: Number(budgetCalculationType === 'WITHOUT_TOOL' ? estimatedCost : 0),
         
         // Funding sources
-        government_treasury: Number(data.government_treasury),
-        sdg_funding: Number(data.sdg_funding),
+        government_treasury: Number(data.government_treasury || 0),
+        sdg_funding: Number(data.sdg_funding || 0),
         partners_funding: Number(calculatedPartnersFunding),
-        other_funding: Number(data.other_funding),
+        other_funding: Number(data.other_funding || 0),
         
         // Store tool-specific details and partners list
         partners_details: partners.length > 0 ? { partners_list: partners.filter(p => p.name && p.amount > 0) } : null,
@@ -439,11 +439,6 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
               />
             </div>
           </div>
-                ${estimatedCost.toLocaleString()}
-              <p className="mt-2 text-sm text-gray-500">
-                <Info className="h-4 w-4 mr-1 inline align-text-bottom" />
-                Total estimated cost for this sub-activity
-              </p>
 
               {/* Partners funding section */}
               <div className="mt-4">
@@ -563,8 +558,6 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
       {/* Budget Summary */}
       <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
         <h3 className="text-sm font-medium text-gray-700 mb-4">Budget Summary</h3>
-          This total will be used as the budget requirement for the sub-activity
-        </p>
 
         <div className="flex items-center justify-between mb-4">
           <h4 className="text-sm font-medium text-gray-700">Calculation Method:</h4>
@@ -630,7 +623,7 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
 
         {fundingGap === 0 && (
           <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md flex items-center gap-2">
-            <Info className="h-5 w-5 text-green-500" />
+            <CheckCircle className="h-5 w-5 text-green-500" />
             <p className="text-sm text-green-700">
               Budget is fully funded
             </p>
@@ -706,7 +699,7 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
               Saving...
             </span>
           ) : (
-            'Save Budget'
+            'Save Sub-Activity'
           )}
         </button>
       </div>
