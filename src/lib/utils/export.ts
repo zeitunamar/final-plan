@@ -7,19 +7,13 @@ import type { Language } from '../i18n/translations';
 
 // Helper function to get selected months for a specific quarter
 const getMonthsForQuarter = (selectedMonths: string[] | null, selectedQuarters: string[] | null, quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'): string => {
-  console.log(`Getting months for ${quarter}:`, { selectedMonths, selectedQuarters });
-  
-  if (!selectedMonths && !selectedQuarters) {
-    console.log(`No months or quarters selected for ${quarter}`);
-    return '-';
-  }
+  if (!selectedMonths && !selectedQuarters) return '-';
   
   // If quarters are selected, show all months in that quarter
   if (selectedQuarters && Array.isArray(selectedQuarters) && selectedQuarters.includes(quarter)) {
     const quarterMonths = MONTHS
       .filter(month => month.quarter === quarter)
       .map(month => month.value);
-    console.log(`Quarter ${quarter} selected, showing all months:`, quarterMonths);
     return quarterMonths.join(', ');
   }
   
@@ -28,11 +22,9 @@ const getMonthsForQuarter = (selectedMonths: string[] | null, selectedQuarters: 
     const quarterMonths = MONTHS
       .filter(month => month.quarter === quarter && selectedMonths.includes(month.value))
       .map(month => month.value);
-    console.log(`Individual months selected for ${quarter}:`, quarterMonths);
     return quarterMonths.length > 0 ? quarterMonths.join(', ') : '-';
   }
   
-  console.log(`No valid selection for ${quarter}`);
   return '-';
 };
 
@@ -114,75 +106,57 @@ export const exportToExcel = async (
   }
 ) => {
   try {
-    console.log('Starting Excel export with data rows:', data.length);
-    
     const workbook = XLSX.utils.book_new();
     
     // Select headers based on language
     const headers = language === 'am' ? TABLE_HEADERS_AM : TABLE_HEADERS_EN;
     
+    // Create header row with styling
+    const headerRow = headers.map(header => ({ v: header, t: 's' }));
+    
     // Transform data to match table structure and add to worksheet
-    const tableData = data.map((row, index) => {
-      console.log(`Processing row ${index + 1}:`, row);
-      
-      return [
-        row.No || '',
-        row['Strategic Objective'] || '',
-        row['Strategic Objective Weight'] || '',
-        row['Strategic Initiative'] || '',
-        row['Initiative Weight'] || '',
-        row['Performance Measure/Main Activity'] || '',
-        row.Weight || '',
-        row.Baseline || '',
-        row.Q1Target || '',
-        row.Q1Months || '',
-        row.Q2Target || '',
-        row.Q2Months || '',
-        row.SixMonthTarget || '',
-        row.Q3Target || '',
-        row.Q3Months || '',
-        row.Q4Target || '',
-        row.Q4Months || '',
-        row.AnnualTarget || '',
-        row.Implementor || '',
-        formatCurrency(row.BudgetRequired),
-        formatCurrency(row.Government),
-        formatCurrency(row.Partners),
-        formatCurrency(row.SDG),
-        formatCurrency(row.Other),
-        formatCurrency(row.TotalAvailable),
-        formatCurrency(row.Gap)
-      ];
-    });
-
-    console.log(`Converted ${data.length} data rows to ${tableData.length} table rows`);
+    const tableData = data.map(row => [
+      row.No || '',
+      row['Strategic Objective'] || '',
+      row['Strategic Objective Weight'] || '',
+      row['Strategic Initiative'] || '',
+      row['Initiative Weight'] || '',
+      row['Performance Measure/Main Activity'] || '',
+      row.Weight || '',
+      row.Baseline || '',
+      row.Q1Target || '',
+      row.Q1Months || '',
+      row.Q2Target || '',
+      row.Q2Months || '',
+      row.SixMonthTarget || '',
+      row.Q3Target || '',
+      row.Q3Months || '',
+      row.Q4Target || '',
+      row.Q4Months || '',
+      row.AnnualTarget || '',
+      row.Implementor || '',
+      formatCurrency(row.BudgetRequired),
+      formatCurrency(row.Government),
+      formatCurrency(row.Partners),
+      formatCurrency(row.SDG),
+      formatCurrency(row.Other),
+      formatCurrency(row.TotalAvailable),
+      formatCurrency(row.Gap)
+    ]);
 
     // Create worksheet with headers and data
     const worksheetData = [headers, ...tableData];
     const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
 
     // Auto-size columns
-    const columnWidths = headers.map((header, colIndex) => {
+    const columnWidths = headers.map((_, colIndex) => {
       const maxLength = Math.max(
-        header.length,
+        headers[colIndex].length,
         ...tableData.map(row => String(row[colIndex] || '').length)
       );
       return { wch: Math.min(Math.max(maxLength + 2, 10), 30) };
     });
     worksheet['!cols'] = columnWidths;
-
-    // Style the header row
-    const headerRange = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-    for (let col = headerRange.s.c; col <= headerRange.e.c; col++) {
-      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
-      if (!worksheet[cellAddress]) continue;
-      
-      worksheet[cellAddress].s = {
-        fill: { fgColor: { rgb: "4F46E5" } }, // Blue background
-        font: { color: { rgb: "FFFFFF" }, bold: true }, // White text, bold
-        alignment: { horizontal: "center", vertical: "center" }
-      };
-    }
 
     // Add metadata sheet if provided
     if (metadata) {
@@ -199,8 +173,6 @@ export const exportToExcel = async (
     }
 
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Strategic Plan');
-    
-    console.log('Excel export completed, saving file:', `${filename}.xlsx`);
     XLSX.writeFile(workbook, `${filename}.xlsx`);
   } catch (error) {
     console.error('Failed to export Excel:', error);
@@ -221,44 +193,36 @@ export const exportToPDF = async (
   }
 ) => {
   try {
-    console.log('Starting PDF export with data rows:', data.length);
-    
     const doc = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
     
     // Select headers based on language
     const headers = language === 'am' ? TABLE_HEADERS_AM : TABLE_HEADERS_EN;
     
     // Transform data to match table structure
-    const tableData = data.map((row, index) => {
-      console.log(`PDF Processing row ${index + 1}:`, row);
-      
-      return [
-        row.No || '',
-        row['Strategic Objective'] || '',
-        row['Strategic Objective Weight'] || '',
-        row['Strategic Initiative'] || '',
-        row['Initiative Weight'] || '',
-        row['Performance Measure/Main Activity'] || '',
-        row.Weight || '',
-        row.Baseline || '',
-        `${row.Q1Target || ''}\n${row.Q1Months || ''}`,
-        `${row.Q2Target || ''}\n${row.Q2Months || ''}`,
-        row.SixMonthTarget || '',
-        `${row.Q3Target || ''}\n${row.Q3Months || ''}`,
-        `${row.Q4Target || ''}\n${row.Q4Months || ''}`,
-        row.AnnualTarget || '',
-        row.Implementor || '',
-        formatCurrency(row.BudgetRequired),
-        formatCurrency(row.Government),
-        formatCurrency(row.Partners),
-        formatCurrency(row.SDG),
-        formatCurrency(row.Other),
-        formatCurrency(row.TotalAvailable),
-        formatCurrency(row.Gap)
-      ];
-    });
-
-    console.log(`Converted ${data.length} data rows to ${tableData.length} PDF table rows`);
+    const tableData = data.map(row => [
+      row.No || '',
+      row['Strategic Objective'] || '',
+      row['Strategic Objective Weight'] || '',
+      row['Strategic Initiative'] || '',
+      row['Initiative Weight'] || '',
+      row['Performance Measure/Main Activity'] || '',
+      row.Weight || '',
+      row.Baseline || '',
+      `${row.Q1Target || ''}\n${row.Q1Months || ''}`,
+      `${row.Q2Target || ''}\n${row.Q2Months || ''}`,
+      row.SixMonthTarget || '',
+      `${row.Q3Target || ''}\n${row.Q3Months || ''}`,
+      `${row.Q4Target || ''}\n${row.Q4Months || ''}`,
+      row.AnnualTarget || '',
+      row.Implementor || '',
+      formatCurrency(row.BudgetRequired),
+      formatCurrency(row.Government),
+      formatCurrency(row.Partners),
+      formatCurrency(row.SDG),
+      formatCurrency(row.Other),
+      formatCurrency(row.TotalAvailable),
+      formatCurrency(row.Gap)
+    ]);
 
     // Add title and metadata
     if (metadata) {
@@ -278,51 +242,40 @@ export const exportToPDF = async (
       startY: metadata ? 60 : 20,
       styles: {
         fontSize: 6,
-        cellPadding: 1,
-        lineWidth: 0.1,
-        lineColor: [200, 200, 200]
+        cellPadding: 1
       },
       headStyles: {
-        fillColor: [79, 70, 229], // Blue color matching the gradient
+        fillColor: [59, 130, 246], // Blue color
         textColor: 255,
         fontSize: 7,
-        fontStyle: 'bold',
-        halign: 'center'
+        fontStyle: 'bold'
       },
       columnStyles: {
-        0: { cellWidth: 8, halign: 'center' },   // No.
-        1: { cellWidth: 25, halign: 'left' },    // Strategic Objective
-        2: { cellWidth: 12, halign: 'center' },  // Objective Weight
-        3: { cellWidth: 25, halign: 'left' },    // Strategic Initiative
-        4: { cellWidth: 12, halign: 'center' },  // Initiative Weight
-        5: { cellWidth: 30, halign: 'left' },    // PM/MA Name
-        6: { cellWidth: 10, halign: 'center' },  // Weight
-        7: { cellWidth: 15, halign: 'center' },  // Baseline
-        8: { cellWidth: 18, halign: 'center' },  // Q1 Target + Months
-        9: { cellWidth: 18, halign: 'center' },  // Q1 Months
-        10: { cellWidth: 18, halign: 'center' }, // Q2 Target + Months
-        11: { cellWidth: 18, halign: 'center' }, // Q2 Months
-        12: { cellWidth: 15, halign: 'center' }, // 6-Month Target
-        13: { cellWidth: 18, halign: 'center' }, // Q3 Target + Months
-        14: { cellWidth: 18, halign: 'center' }, // Q3 Months
-        15: { cellWidth: 18, halign: 'center' }, // Q4 Target + Months
-        16: { cellWidth: 18, halign: 'center' }, // Q4 Months
-        17: { cellWidth: 15, halign: 'center' }, // Annual Target
-        18: { cellWidth: 20, halign: 'left' },   // Implementor
-        19: { cellWidth: 18, halign: 'right' },  // Budget Required
-        20: { cellWidth: 15, halign: 'right' },  // Government
-        21: { cellWidth: 15, halign: 'right' },  // Partners
-        22: { cellWidth: 12, halign: 'right' },  // SDG
-        23: { cellWidth: 12, halign: 'right' },  // Other
-        24: { cellWidth: 18, halign: 'right' },  // Total Available
-        25: { cellWidth: 15, halign: 'right' }   // Gap
-      },
-      alternateRowStyles: {
-        fillColor: [248, 250, 252] // Light gray for alternate rows
+        0: { cellWidth: 8 },  // No.
+        1: { cellWidth: 25 }, // Strategic Objective
+        2: { cellWidth: 15 }, // Objective Weight
+        3: { cellWidth: 25 }, // Strategic Initiative
+        4: { cellWidth: 15 }, // Initiative Weight
+        5: { cellWidth: 30 }, // PM/MA Name
+        6: { cellWidth: 12 }, // Weight
+        7: { cellWidth: 15 }, // Baseline
+        8: { cellWidth: 20 }, // Q1 Target + Months
+        9: { cellWidth: 20 }, // Q2 Target + Months
+        10: { cellWidth: 15 }, // 6-Month Target
+        11: { cellWidth: 20 }, // Q3 Target + Months
+        12: { cellWidth: 20 }, // Q4 Target + Months
+        13: { cellWidth: 15 }, // Annual Target
+        14: { cellWidth: 20 }, // Implementor
+        15: { cellWidth: 18 }, // Budget Required
+        16: { cellWidth: 15 }, // Government
+        17: { cellWidth: 15 }, // Partners
+        18: { cellWidth: 12 }, // SDG
+        19: { cellWidth: 12 }, // Other
+        20: { cellWidth: 18 }, // Total Available
+        21: { cellWidth: 15 }  // Gap
       }
     });
 
-    console.log('PDF export completed, saving file:', `${filename}.pdf`);
     doc.save(`${filename}.pdf`);
   } catch (error) {
     console.error('Failed to export PDF:', error);
@@ -338,7 +291,7 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
     return exportData;
   }
 
-  console.log(`Converting ${objectives.length} objectives for export`);
+  console.log('Converting objectives for export:', objectives.length);
 
   objectives.forEach((objective, objIndex) => {
     if (!objective) return;
@@ -370,13 +323,13 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
         'Q4Months': '-',
         'AnnualTarget': '-',
         'Implementor': 'Ministry of Health',
-        'BudgetRequired': 0,
-        'Government': 0,
-        'Partners': 0,
-        'SDG': 0,
-        'Other': 0,
-        'TotalAvailable': 0,
-        'Gap': 0
+        'BudgetRequired': '-',
+        'Government': '-',
+        'Partners': '-',
+        'SDG': '-',
+        'Other': '-',
+        'TotalAvailable': '-',
+        'Gap': '-'
       });
     } else {
       objective.initiatives.forEach((initiative: any) => {
@@ -409,13 +362,13 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
             'Q4Months': '-',
             'AnnualTarget': '-',
             'Implementor': initiative.organization_name || 'Ministry of Health',
-            'BudgetRequired': 0,
-            'Government': 0,
-            'Partners': 0,
-            'SDG': 0,
-            'Other': 0,
-            'TotalAvailable': 0,
-            'Gap': 0
+            'BudgetRequired': '-',
+            'Government': '-',
+            'Partners': '-',
+            'SDG': '-',
+            'Other': '-',
+            'TotalAvailable': '-',
+            'Gap': '-'
           });
           objectiveAdded = true;
         } else {
@@ -453,21 +406,13 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
               ? Number(item.q1_target || 0) + Number(item.q2_target || 0) 
               : Number(item.q2_target || 0);
             
-            // Get selected months for each quarter - WITH DEBUG LOGGING
-            console.log(`Processing item "${item.name}":`, {
-              selected_months: item.selected_months,
-              selected_quarters: item.selected_quarters,
-              type: item.type
-            });
-
+            // Get selected months for each quarter
             const q1Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q1');
             const q2Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q2');
             const q3Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q3');
             const q4Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q4');
-
-            console.log(`Calculated months for "${item.name}":`, { q1Months, q2Months, q3Months, q4Months });
-
-            // Add prefix based on item type - FIXED PREFIX LOGIC
+            
+            // Add prefix based on item type - SAME AS PLANREVIEWTABLE
             const displayName = isPerformanceMeasure 
               ? `PM: ${item.name}` 
               : `MA: ${item.name}`;
@@ -478,7 +423,7 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
               'Strategic Objective Weight': objectiveAdded ? '' : `${effectiveWeight}%`,
               'Strategic Initiative': initiativeAddedForObjective ? '' : (initiative.name || 'Untitled Initiative'),
               'Initiative Weight': initiativeAddedForObjective ? '' : `${initiative.weight || 0}%`,
-              'Performance Measure/Main Activity': displayName, // USING THE DISPLAY NAME WITH PREFIX
+              'Performance Measure/Main Activity': displayName, // USING DISPLAY NAME WITH PREFIX
               'Weight': `${item.weight || 0}%`,
               'Baseline': item.baseline || '-',
               'Q1Target': item.q1_target || 0,
