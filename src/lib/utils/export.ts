@@ -46,23 +46,23 @@ const TABLE_HEADERS_EN = [
   'Performance Measure/Main Activity',
   'Weight',
   'Baseline',
-  'Q1Target',
-  'Q1Months',
-  'Q2Target',
-  'Q2Months',
-  'SixMonthTarget',
-  'Q3Target',
-  'Q3Months',
-  'Q4Target',
-  'Q4Months',
-  'AnnualTarget',
+  'Q1 Target',
+  'Q1 Months',
+  'Q2 Target',
+  'Q2 Months',
+  '6-Month Target',
+  'Q3 Target',
+  'Q3 Months',
+  'Q4 Target',
+  'Q4 Months',
+  'Annual Target',
   'Implementor',
-  'BudgetRequired',
+  'Budget Required',
   'Government',
   'Partners',
   'SDG',
   'Other',
-  'TotalAvailable',
+  'Total Available',
   'Gap'
 ];
 
@@ -241,15 +241,11 @@ export const exportToPDF = async (
         row['Performance Measure/Main Activity'] || '',
         row.Weight || '',
         row.Baseline || '',
-        row.Q1Target || '',
-        row.Q1Months || '',
-        row.Q2Target || '',
-        row.Q2Months || '',
+        `${row.Q1Target || ''}\n${row.Q1Months || ''}`,
+        `${row.Q2Target || ''}\n${row.Q2Months || ''}`,
         row.SixMonthTarget || '',
-        row.Q3Target || '',
-        row.Q3Months || '',
-        row.Q4Target || '',
-        row.Q4Months || '',
+        `${row.Q3Target || ''}\n${row.Q3Months || ''}`,
+        `${row.Q4Target || ''}\n${row.Q4Months || ''}`,
         row.AnnualTarget || '',
         row.Implementor || '',
         formatCurrency(row.BudgetRequired),
@@ -302,15 +298,15 @@ export const exportToPDF = async (
         5: { cellWidth: 30, halign: 'left' },    // PM/MA Name
         6: { cellWidth: 10, halign: 'center' },  // Weight
         7: { cellWidth: 15, halign: 'center' },  // Baseline
-        8: { cellWidth: 12, halign: 'center' },  // Q1 Target
-        9: { cellWidth: 15, halign: 'center' },  // Q1 Months
-        10: { cellWidth: 12, halign: 'center' }, // Q2 Target
-        11: { cellWidth: 15, halign: 'center' }, // Q2 Months
+        8: { cellWidth: 18, halign: 'center' },  // Q1 Target + Months
+        9: { cellWidth: 18, halign: 'center' },  // Q1 Months
+        10: { cellWidth: 18, halign: 'center' }, // Q2 Target + Months
+        11: { cellWidth: 18, halign: 'center' }, // Q2 Months
         12: { cellWidth: 15, halign: 'center' }, // 6-Month Target
-        13: { cellWidth: 12, halign: 'center' }, // Q3 Target
-        14: { cellWidth: 15, halign: 'center' }, // Q3 Months
-        15: { cellWidth: 12, halign: 'center' }, // Q4 Target
-        16: { cellWidth: 15, halign: 'center' }, // Q4 Months
+        13: { cellWidth: 18, halign: 'center' }, // Q3 Target + Months
+        14: { cellWidth: 18, halign: 'center' }, // Q3 Months
+        15: { cellWidth: 18, halign: 'center' }, // Q4 Target + Months
+        16: { cellWidth: 18, halign: 'center' }, // Q4 Months
         17: { cellWidth: 15, halign: 'center' }, // Annual Target
         18: { cellWidth: 20, halign: 'left' },   // Implementor
         19: { cellWidth: 18, halign: 'right' },  // Budget Required
@@ -347,8 +343,8 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
   objectives.forEach((objective, objIndex) => {
     if (!objective) return;
     
-    // Get objective weight directly from database (effective_weight, planner_weight, or weight)
-    const objectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
+    // Get objective weight (use effective_weight, planner_weight, or weight)
+    const effectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
     
     let objectiveAdded = false;
     
@@ -357,7 +353,7 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
       exportData.push({
         No: objIndex + 1,
         'Strategic Objective': objective.title || 'Untitled Objective',
-        'Strategic Objective Weight': `${objectiveWeight.toFixed(1)}%`,
+        'Strategic Objective Weight': `${effectiveWeight}%`,
         'Strategic Initiative': '-',
         'Initiative Weight': '-',
         'Performance Measure/Main Activity': '-',
@@ -374,22 +370,21 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
         'Q4Months': '-',
         'AnnualTarget': '-',
         'Implementor': 'Ministry of Health',
-        'BudgetRequired': '-',
-        'Government': '-',
-        'Partners': '-',
-        'SDG': '-',
-        'Other': '-',
-        'TotalAvailable': '-',
-        'Gap': '-'
+        'BudgetRequired': 0,
+        'Government': 0,
+        'Partners': 0,
+        'SDG': 0,
+        'Other': 0,
+        'TotalAvailable': 0,
+        'Gap': 0
       });
     } else {
       objective.initiatives.forEach((initiative: any) => {
         if (!initiative) return;
         
-        // Get performance measures and main activities
-        const performanceMeasures = (initiative.performance_measures || []);
-        const mainActivities = (initiative.main_activities || []);
-        
+        // Combine performance measures and main activities
+        const performanceMeasures = (initiative.performance_measures || []).map((item: any) => ({ ...item, type: 'Performance Measure' }));
+        const mainActivities = (initiative.main_activities || []).map((item: any) => ({ ...item, type: 'Main Activity' }));
         const allItems = [...performanceMeasures, ...mainActivities];
         
         if (allItems.length === 0) {
@@ -397,7 +392,7 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
           exportData.push({
             No: objectiveAdded ? '' : (objIndex + 1).toString(),
             'Strategic Objective': objectiveAdded ? '' : (objective.title || 'Untitled Objective'),
-            'Strategic Objective Weight': objectiveAdded ? '' : `${objectiveWeight.toFixed(1)}%`,
+            'Strategic Objective Weight': objectiveAdded ? '' : `${effectiveWeight}%`,
             'Strategic Initiative': initiative.name || 'Untitled Initiative',
             'Initiative Weight': `${initiative.weight || 0}%`,
             'Performance Measure/Main Activity': 'No measures or activities',
@@ -414,13 +409,13 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
             'Q4Months': '-',
             'AnnualTarget': '-',
             'Implementor': initiative.organization_name || 'Ministry of Health',
-            'BudgetRequired': '-',
-            'Government': '-',
-            'Partners': '-',
-            'SDG': '-',
-            'Other': '-',
-            'TotalAvailable': '-',
-            'Gap': '-'
+            'BudgetRequired': 0,
+            'Government': 0,
+            'Partners': 0,
+            'SDG': 0,
+            'Other': 0,
+            'TotalAvailable': 0,
+            'Gap': 0
           });
           objectiveAdded = true;
         } else {
@@ -429,7 +424,7 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
           allItems.forEach((item: any) => {
             if (!item) return;
             
-            const isPerformanceMeasure = performanceMeasures.includes(item);
+            const isPerformanceMeasure = item.type === 'Performance Measure';
             
             // Calculate budget values (same logic as table)
             let budgetRequired = 0;
@@ -462,7 +457,7 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
             console.log(`Processing item "${item.name}":`, {
               selected_months: item.selected_months,
               selected_quarters: item.selected_quarters,
-              type: isPerformanceMeasure ? 'Performance Measure' : 'Main Activity'
+              type: item.type
             });
 
             const q1Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q1');
@@ -480,7 +475,7 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
             exportData.push({
               No: objectiveAdded ? '' : (objIndex + 1).toString(),
               'Strategic Objective': objectiveAdded ? '' : (objective.title || 'Untitled Objective'),
-              'Strategic Objective Weight': objectiveAdded ? '' : `${objectiveWeight.toFixed(1)}%`,
+              'Strategic Objective Weight': objectiveAdded ? '' : `${effectiveWeight}%`,
               'Strategic Initiative': initiativeAddedForObjective ? '' : (initiative.name || 'Untitled Initiative'),
               'Initiative Weight': initiativeAddedForObjective ? '' : `${initiative.weight || 0}%`,
               'Performance Measure/Main Activity': displayName, // USING THE DISPLAY NAME WITH PREFIX
@@ -515,6 +510,77 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
       });
     }
   });
+  
+  // Calculate totals
+  const grandTotalRequired = exportData.reduce((sum, row) => sum + (Number(row.BudgetRequired) || 0), 0);
+  const grandTotalGovernment = exportData.reduce((sum, row) => sum + (Number(row.Government) || 0), 0);
+  const grandTotalPartners = exportData.reduce((sum, row) => sum + (Number(row.Partners) || 0), 0);
+  const grandTotalSDG = exportData.reduce((sum, row) => sum + (Number(row.SDG) || 0), 0);
+  const grandTotalOther = exportData.reduce((sum, row) => sum + (Number(row.Other) || 0), 0);
+  const grandTotalAvailable = grandTotalGovernment + grandTotalPartners + grandTotalSDG + grandTotalOther;
+  const grandTotalGap = Math.max(0, grandTotalRequired - grandTotalAvailable);
+
+  // Add summary row
+  if (grandTotalRequired > 0) {
+    exportData.push({
+      'No': '',
+      'Strategic Objective': 'TOTAL BUDGET SUMMARY',
+      'Strategic Objective Weight': '',
+      'Strategic Initiative': '',
+      'Initiative Weight': '',
+      'Performance Measure/Main Activity': '',
+      'Weight': '',
+      'Baseline': '',
+      'Q1Target': '',
+      'Q1Months': '',
+      'Q2Target': '',
+      'Q2Months': '',
+      'SixMonthTarget': '',
+      'Q3Target': '',
+      'Q3Months': '',
+      'Q4Target': '',
+      'Q4Months': '',
+      'AnnualTarget': '',
+      'Implementor': '',
+      'BudgetRequired': grandTotalRequired,
+      'Government': grandTotalGovernment,
+      'Partners': grandTotalPartners,
+      'SDG': grandTotalSDG,
+      'Other': grandTotalOther,
+      'TotalAvailable': grandTotalAvailable,
+      'Gap': grandTotalGap
+    });
+
+    // Add percentage row
+    exportData.push({
+      'No': '',
+      'Strategic Objective': 'FUNDING BREAKDOWN',
+      'Strategic Objective Weight': '',
+      'Strategic Initiative': '',
+      'Initiative Weight': '',
+      'Performance Measure/Main Activity': '',
+      'Weight': '',
+      'Baseline': '',
+      'Q1Target': '',
+      'Q1Months': '',
+      'Q2Target': '',
+      'Q2Months': '',
+      'SixMonthTarget': '',
+      'Q3Target': '',
+      'Q3Months': '',
+      'Q4Target': '',
+      'Q4Months': '',
+      'AnnualTarget': '',
+      'Implementor': '',
+      'BudgetRequired': '100%',
+      'Government': grandTotalAvailable > 0 ? `${((grandTotalGovernment / grandTotalAvailable) * 100).toFixed(1)}%` : '0%',
+      'Partners': grandTotalAvailable > 0 ? `${((grandTotalPartners / grandTotalAvailable) * 100).toFixed(1)}%` : '0%',
+      'SDG': grandTotalAvailable > 0 ? `${((grandTotalSDG / grandTotalAvailable) * 100).toFixed(1)}%` : '0%',
+      'Other': grandTotalAvailable > 0 ? `${((grandTotalOther / grandTotalAvailable) * 100).toFixed(1)}%` : '0%',
+      'TotalAvailable': '100%',
+      'Gap': grandTotalGap > 0 ? `${((grandTotalGap / grandTotalRequired) * 100).toFixed(1)}%` : '0%'
+    });
+  }
   
   console.log(`Converted ${objectives.length} objectives to ${exportData.length} export rows`);
   return exportData;
