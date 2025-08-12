@@ -382,13 +382,13 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
         'TotalAvailable': '-',
         'Gap': '-'
       });
+      objectiveAdded = true;
     } else {
       objective.initiatives.forEach((initiative: any) => {
         if (!initiative) return;
         
-        // Get performance measures and main activities
-        const performanceMeasures = (initiative.performance_measures || []);
-        const mainActivities = (initiative.main_activities || []);
+        const performanceMeasures = (initiative.performance_measures || []).map(item => ({ ...item, type: 'Performance Measure' }));
+        const mainActivities = (initiative.main_activities || []).map(item => ({ ...item, type: 'Main Activity' }));
         
         const allItems = [...performanceMeasures, ...mainActivities];
         
@@ -464,6 +464,11 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
               selected_quarters: item.selected_quarters,
               type: isPerformanceMeasure ? 'Performance Measure' : 'Main Activity'
             });
+            // Add prefix based on item type
+            const displayName = isPerformanceMeasure 
+              ? `PM: ${item.name}` 
+              : `MA: ${item.name}`;
+            
 
             const q1Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q1');
             const q2Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q2');
@@ -483,6 +488,7 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
               'Strategic Objective Weight': objectiveAdded ? '' : `${objectiveWeight.toFixed(1)}%`,
               'Strategic Initiative': initiativeAddedForObjective ? '' : (initiative.name || 'Untitled Initiative'),
               'Initiative Weight': initiativeAddedForObjective ? '' : `${initiative.weight || 0}%`,
+              'Performance Measure/Main Activity': displayName,
               'Performance Measure/Main Activity': displayName, // USING THE DISPLAY NAME WITH PREFIX
               'Weight': `${item.weight || 0}%`,
               'Baseline': item.baseline || '-',
