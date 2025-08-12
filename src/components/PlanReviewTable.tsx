@@ -77,61 +77,52 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
     return '-';
   };
 
-  // Fetch organizations for mapping
+  // Fetch organizations on mount
   useEffect(() => {
     const fetchOrganizations = async () => {
       try {
         const response = await organizations.getAll();
         const orgMap: Record<string, string> = {};
-        
         response.data.forEach((org: any) => {
           orgMap[org.id] = org.name;
-          
-          // Process objectives to calculate budget from sub-activities
-          objectives.forEach((objective: any) => {
-            objective?.initiatives?.forEach((initiative: any) => {
-              initiative?.main_activities?.forEach((item: any) => {
-                let budgetRequired = 0;
-                let government = 0;
-                let partners = 0;
-                let sdg = 0;
-                let other = 0;
-                let totalAvailable = 0;
-                let gap = 0;
+        });
 
-                // Calculate budget from sub-activities if they exist, otherwise use legacy budget
-                if (item.sub_activities && item.sub_activities.length > 0) {
-                  // Aggregate budget from all sub-activities
-                  item.sub_activities.forEach((subActivity: any) => {
-                    if (subActivity.budget) {
-                      const subBudgetRequired = subActivity.budget.budget_calculation_type === 'WITH_TOOL'
-                        ? Number(subActivity.budget.estimated_cost_with_tool || 0)
-                        : Number(subActivity.budget.estimated_cost_without_tool || 0);
-                      
-                      budgetRequired += subBudgetRequired;
-                      government += Number(subActivity.budget.government_treasury || 0);
-                      partners += Number(subActivity.budget.partners_funding || 0);
-                      sdg += Number(subActivity.budget.sdg_funding || 0);
-                      other += Number(subActivity.budget.other_funding || 0);
-                    }
-                  });
-                  
-                  totalAvailable = government + partners + sdg + other;
-                  gap = Math.max(0, budgetRequired - totalAvailable);
-                } else if (item.budget) {
-                  // Use legacy budget if no sub-activities
-                  budgetRequired = item.budget.budget_calculation_type === 'WITH_TOOL' 
-                    ? Number(item.budget.estimated_cost_with_tool || 0)
-                    : Number(item.budget.estimated_cost_without_tool || 0);
-                  
-                  government = Number(item.budget.government_treasury || 0);
-                  partners = Number(item.budget.partners_funding || 0);
-                  sdg = Number(item.budget.sdg_funding || 0);
-                  other = Number(item.budget.other_funding || 0);
-                  totalAvailable = government + partners + sdg + other;
-                  gap = Math.max(0, budgetRequired - totalAvailable);
-                }
-              });
+        // Process objectives to calculate budget from sub-activities
+        objectives.forEach((objective: any) => {
+          objective?.initiatives?.forEach((initiative: any) => {
+            initiative?.main_activities?.forEach((item: any) => {
+              // Calculate budget from sub-activities if they exist, otherwise use legacy budget
+              if (item.sub_activities && item.sub_activities.length > 0) {
+                // Aggregate budget from all sub-activities
+                item.sub_activities.forEach((subActivity: any) => {
+                  if (subActivity.budget) {
+                    const subBudgetRequired = subActivity.budget.budget_calculation_type === 'WITH_TOOL'
+                      ? Number(subActivity.budget.estimated_cost_with_tool || 0)
+                      : Number(subActivity.budget.estimated_cost_without_tool || 0);
+                    
+                    budgetRequired += subBudgetRequired;
+                    government += Number(subActivity.budget.government_treasury || 0);
+                    partners += Number(subActivity.budget.partners_funding || 0);
+                    sdg += Number(subActivity.budget.sdg_funding || 0);
+                    other += Number(subActivity.budget.other_funding || 0);
+                  }
+                });
+                
+                totalAvailable = government + partners + sdg + other;
+                gap = Math.max(0, budgetRequired - totalAvailable);
+              } else if (item.budget) {
+                // Use legacy budget if no sub-activities
+                budgetRequired = item.budget.budget_calculation_type === 'WITH_TOOL' 
+                  ? Number(item.budget.estimated_cost_with_tool || 0)
+                  : Number(item.budget.estimated_cost_without_tool || 0);
+                
+                government = Number(item.budget.government_treasury || 0);
+                partners = Number(item.budget.partners_funding || 0);
+                sdg = Number(item.budget.sdg_funding || 0);
+                other = Number(item.budget.other_funding || 0);
+                totalAvailable = government + partners + sdg + other;
+                gap = Math.max(0, budgetRequired - totalAvailable);
+              }
             });
           });
         });
@@ -303,17 +294,39 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           let totalAvailable = 0;
           let gap = 0;
 
-          if (item.type === 'Main Activity' && item.budget) {
-            budgetRequired = item.budget.budget_calculation_type === 'WITH_TOOL' 
-              ? Number(item.budget.estimated_cost_with_tool || 0)
-              : Number(item.budget.estimated_cost_without_tool || 0);
-            
-            government = Number(item.budget.government_treasury || 0);
-            partners = Number(item.budget.partners_funding || 0);
-            sdg = Number(item.budget.sdg_funding || 0);
-            other = Number(item.budget.other_funding || 0);
-            totalAvailable = government + partners + sdg + other;
-            gap = Math.max(0, budgetRequired - totalAvailable);
+          if (item.type === 'Main Activity') {
+            // Calculate budget from sub-activities if they exist, otherwise use legacy budget
+            if (item.sub_activities && item.sub_activities.length > 0) {
+              // Aggregate budget from all sub-activities
+              item.sub_activities.forEach((subActivity: any) => {
+                if (subActivity.budget) {
+                  const subBudgetRequired = subActivity.budget.budget_calculation_type === 'WITH_TOOL'
+                    ? Number(subActivity.budget.estimated_cost_with_tool || 0)
+                    : Number(subActivity.budget.estimated_cost_without_tool || 0);
+                  
+                  budgetRequired += subBudgetRequired;
+                  government += Number(subActivity.budget.government_treasury || 0);
+                  partners += Number(subActivity.budget.partners_funding || 0);
+                  sdg += Number(subActivity.budget.sdg_funding || 0);
+                  other += Number(subActivity.budget.other_funding || 0);
+                }
+              });
+              
+              totalAvailable = government + partners + sdg + other;
+              gap = Math.max(0, budgetRequired - totalAvailable);
+            } else if (item.budget) {
+              // Use legacy budget if no sub-activities
+              budgetRequired = item.budget.budget_calculation_type === 'WITH_TOOL' 
+                ? Number(item.budget.estimated_cost_with_tool || 0)
+                : Number(item.budget.estimated_cost_without_tool || 0);
+              
+              government = Number(item.budget.government_treasury || 0);
+              partners = Number(item.budget.partners_funding || 0);
+              sdg = Number(item.budget.sdg_funding || 0);
+              other = Number(item.budget.other_funding || 0);
+              totalAvailable = government + partners + sdg + other;
+              gap = Math.max(0, budgetRequired - totalAvailable);
+            }
           }
 
           // Calculate 6-month target
@@ -397,17 +410,34 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
       processedObjectives.forEach((objective: any) => {
         objective?.initiatives?.forEach((initiative: any) => {
           initiative?.main_activities?.forEach((activity: any) => {
-            if (!activity?.budget) return;
-            
-            const cost = activity.budget.budget_calculation_type === 'WITH_TOOL' 
-              ? Number(activity.budget.estimated_cost_with_tool || 0) 
-              : Number(activity.budget.estimated_cost_without_tool || 0);
-            
-            total += cost;
-            governmentTotal += Number(activity.budget.government_treasury || 0);
-            sdgTotal += Number(activity.budget.sdg_funding || 0);
-            partnersTotal += Number(activity.budget.partners_funding || 0);
-            otherTotal += Number(activity.budget.other_funding || 0);
+            // Calculate budget from sub-activities if they exist, otherwise use legacy budget
+            if (activity?.sub_activities && activity.sub_activities.length > 0) {
+              // Aggregate budget from all sub-activities
+              activity.sub_activities.forEach((subActivity: any) => {
+                if (subActivity.budget) {
+                  const subCost = subActivity.budget.budget_calculation_type === 'WITH_TOOL'
+                    ? Number(subActivity.budget.estimated_cost_with_tool || 0)
+                    : Number(subActivity.budget.estimated_cost_without_tool || 0);
+                  
+                  total += subCost;
+                  governmentTotal += Number(subActivity.budget.government_treasury || 0);
+                  sdgTotal += Number(subActivity.budget.sdg_funding || 0);
+                  partnersTotal += Number(subActivity.budget.partners_funding || 0);
+                  otherTotal += Number(subActivity.budget.other_funding || 0);
+                }
+              });
+            } else if (activity?.budget) {
+              // Use legacy budget if no sub-activities
+              const cost = activity.budget.budget_calculation_type === 'WITH_TOOL' 
+                ? Number(activity.budget.estimated_cost_with_tool || 0) 
+                : Number(activity.budget.estimated_cost_without_tool || 0);
+              
+              total += cost;
+              governmentTotal += Number(activity.budget.government_treasury || 0);
+              sdgTotal += Number(activity.budget.sdg_funding || 0);
+              partnersTotal += Number(activity.budget.partners_funding || 0);
+              otherTotal += Number(activity.budget.other_funding || 0);
+            }
           });
         });
       });
@@ -600,17 +630,39 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         let totalAvailable = 0;
         let gap = 0;
 
-        if (item.type === 'Main Activity' && item.budget) {
-          budgetRequired = item.budget.budget_calculation_type === 'WITH_TOOL' 
-            ? Number(item.budget.estimated_cost_with_tool || 0)
-            : Number(item.budget.estimated_cost_without_tool || 0);
-          
-          government = Number(item.budget.government_treasury || 0);
-          partners = Number(item.budget.partners_funding || 0);
-          sdg = Number(item.budget.sdg_funding || 0);
-          other = Number(item.budget.other_funding || 0);
-          totalAvailable = government + partners + sdg + other;
-          gap = Math.max(0, budgetRequired - totalAvailable);
+        if (item.type === 'Main Activity') {
+          // Calculate budget from sub-activities if they exist, otherwise use legacy budget
+          if (item.sub_activities && item.sub_activities.length > 0) {
+            // Aggregate budget from all sub-activities
+            item.sub_activities.forEach((subActivity: any) => {
+              if (subActivity.budget) {
+                const subBudgetRequired = subActivity.budget.budget_calculation_type === 'WITH_TOOL'
+                  ? Number(subActivity.budget.estimated_cost_with_tool || 0)
+                  : Number(subActivity.budget.estimated_cost_without_tool || 0);
+                
+                budgetRequired += subBudgetRequired;
+                government += Number(subActivity.budget.government_treasury || 0);
+                partners += Number(subActivity.budget.partners_funding || 0);
+                sdg += Number(subActivity.budget.sdg_funding || 0);
+                other += Number(subActivity.budget.other_funding || 0);
+              }
+            });
+            
+            totalAvailable = government + partners + sdg + other;
+            gap = Math.max(0, budgetRequired - totalAvailable);
+          } else if (item.budget) {
+            // Use legacy budget if no sub-activities
+            budgetRequired = item.budget.budget_calculation_type === 'WITH_TOOL' 
+              ? Number(item.budget.estimated_cost_with_tool || 0)
+              : Number(item.budget.estimated_cost_without_tool || 0);
+            
+            government = Number(item.budget.government_treasury || 0);
+            partners = Number(item.budget.partners_funding || 0);
+            sdg = Number(item.budget.sdg_funding || 0);
+            other = Number(item.budget.other_funding || 0);
+            totalAvailable = government + partners + sdg + other;
+            gap = Math.max(0, budgetRequired - totalAvailable);
+          }
         }
 
         // Calculate 6-month target
