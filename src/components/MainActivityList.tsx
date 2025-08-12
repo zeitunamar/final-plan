@@ -266,7 +266,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
       // Close modal and reopen with fresh data
       setTimeout(() => {
         refetch().then(() => {
-          console.log('Data refreshed after sub-activity save');
+      // Force immediate data refresh
           // Find the updated activity and reopen modal
           const refreshedActivity = activitiesList?.data?.find(act => act.id === selectedActivity.id);
           if (refreshedActivity) {
@@ -276,24 +276,35 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
         });
       }, 500);
     } catch (error) {
-      console.error('Failed to save sub-activity:', error);
-    }
-  };
-
-  const handleDeleteSubActivity = async (subActivityId: string) => {
-    try {
-      console.log('Deleting sub-activity:', subActivityId);
-      await subActivities.delete(subActivityId);
-      forceRefresh(); // Refresh data after deletion
+      // Wait a moment for data to be saved, then refresh modal
+      setTimeout(async () => {
+        try {
+          const refreshedData = await refetch();
+          const updatedActivity = refreshedData.data?.data?.find(act => act.id === selectedActivity.id);
+          
+          if (updatedActivity) {
+            console.log('Modal updated with fresh data - sub-activities count:', updatedActivity.sub_activities?.length || 0);
+            setSelectedActivity(updatedActivity);
+          }
+        } catch (error) {
+          console.error('Error refreshing modal data:', error);
+        }
       
       // Refresh modal data
       setTimeout(() => {
-        refetch().then(() => {
-          const refreshedActivity = activitiesList?.data?.find(act => act.id === selectedActivity.id);
-          if (refreshedActivity) {
-            setSelectedActivity(refreshedActivity);
+      // Wait for deletion to complete, then refresh modal
+      setTimeout(async () => {
+        try {
+          const refreshedData = await refetch();
+          const updatedActivity = refreshedData.data?.data?.find(act => act.id === selectedActivity.id);
+          
+          if (updatedActivity) {
+            setSelectedActivity(updatedActivity);
           }
-        });
+        } catch (error) {
+          console.error('Error refreshing after deletion:', error);
+        }
+      }, 500);
       }, 500);
     } catch (error) {
       console.error('Failed to delete sub-activity:', error);
@@ -914,8 +925,8 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                                 }}
                                 className="text-xs text-blue-600 hover:text-blue-800 flex items-center px-2 py-1 bg-blue-50 rounded"
                               >
-                                <Edit className="h-3 w-3 mr-1" />
-                                Edit Budget
+                                <Calculator className="h-3 w-3 mr-1" />
+                                Edit
                               </button>
                             </div>
                           </div>
@@ -945,31 +956,31 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                 <TrainingCostingTool
                   onCalculate={handleCostingComplete}
                   onCancel={handleCostingCancel}
-                />
+                  initialData={editingSubActivity && costingToolData ? costingToolData : undefined}
               )}
               {selectedActivityType === 'Meeting' && (
                 <MeetingWorkshopCostingTool
                   onCalculate={handleCostingComplete}
                   onCancel={handleCostingCancel}
-                />
+                  initialData={editingSubActivity && costingToolData ? costingToolData : undefined}
               )}
               {selectedActivityType === 'Workshop' && (
                 <MeetingWorkshopCostingTool
                   onCalculate={handleCostingComplete}
                   onCancel={handleCostingCancel}
-                />
+                  initialData={editingSubActivity && costingToolData ? costingToolData : undefined}
               )}
               {selectedActivityType === 'Printing' && (
                 <PrintingCostingTool
                   onCalculate={handleCostingComplete}
                   onCancel={handleCostingCancel}
-                />
+                  initialData={editingSubActivity && costingToolData ? costingToolData : undefined}
               )}
               {selectedActivityType === 'Procurement' && (
                 <ProcurementCostingTool
                   onCalculate={handleCostingComplete}
                   onCancel={handleCostingCancel}
-                />
+                  initialData={editingSubActivity && costingToolData ? costingToolData : undefined}
               )}
               {selectedActivityType === 'Supervision' && (
                 <SupervisionCostingTool
@@ -981,7 +992,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                 <div className="text-center p-8">
                   <Info className="h-12 w-12 text-blue-500 mx-auto mb-4" />
                   <h4 className="text-lg font-medium text-gray-900 mb-2">Manual Cost Entry</h4>
-                  <p className="text-gray-600 mb-4">For "Other" activities, you'll enter costs manually in the budget form.</p>
+                  initialData={editingSubActivity && costingToolData ? costingToolData : undefined}
                   <button
                     onClick={() => handleCostingComplete({ totalBudget: 0, estimated_cost: 0 })}
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
@@ -1008,7 +1019,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                 budgetCalculationType="WITH_TOOL"
                 activityType={selectedActivityType}
                 onSubmit={handleSubActivitySaved}
-                initialData={costingToolData}
+                initialData={editingSubActivity || costingToolData}
                 onCancel={() => {
                   setShowBudgetForm(false);
                   setSelectedActivityType(null);
