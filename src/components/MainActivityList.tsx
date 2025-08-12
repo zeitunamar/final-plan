@@ -548,13 +548,13 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                     
                     {/* Summary Stats */}
                     <div className="mt-2 pt-2 border-t border-gray-200 grid grid-cols-2 gap-2 text-xs text-gray-500">
-                        ${modalBudgetData.budgetRequired.toLocaleString()}
+                      <div>Budget Required: ${modalBudgetData.budgetRequired.toLocaleString()}</div>
                       <div>Funding Available: ${totalAvailable.toLocaleString()}</div>
                       <div className="col-span-2">
                         <span className={`font-medium ${gap > 0 ? 'text-red-600' : 'text-green-600'}`}>
                           Gap: ${gap.toLocaleString()}
                           {gap <= 0 && ' (Fully Funded)'}
-                        ${modalBudgetData.totalAvailable.toLocaleString()}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -699,13 +699,13 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                       <div>
                         <span className="text-blue-600">Total Budget:</span>
                         <div className="font-bold text-blue-800 text-lg">
-                          ${modalBudgetRequired.toLocaleString()}
+                          ${modalBudgetData.budgetRequired.toLocaleString()}
                         </div>
                       </div>
                       <div>
                         <span className="text-blue-600">Available Funding:</span>
                         <div className="font-bold text-green-600 text-lg">
-                          ${modalTotalAvailable.toLocaleString()}
+                          ${modalBudgetData.totalAvailable.toLocaleString()}
                         </div>
                       </div>
                     </div>
