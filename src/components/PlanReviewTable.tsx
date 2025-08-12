@@ -540,11 +540,23 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                     )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.baseline}</td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-900">{row.q1Target}</td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-900">{row.q2Target}</td>
+                  <td className="px-4 py-3 text-sm text-center text-gray-900">
+                    <div className="font-medium">{row.q1Target}</div>
+                    <div className="text-xs text-blue-600 mt-1">{row.q1Months}</div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-center text-gray-900">
+                    <div className="font-medium">{row.q2Target}</div>
+                    <div className="text-xs text-blue-600 mt-1">{row.q2Months}</div>
+                  </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-center font-medium text-blue-600">{row.sixMonthTarget}</td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-900">{row.q3Target}</td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-900">{row.q4Target}</td>
+                  <td className="px-4 py-3 text-sm text-center text-gray-900">
+                    <div className="font-medium">{row.q3Target}</div>
+                    <div className="text-xs text-blue-600 mt-1">{row.q3Months}</div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-center text-gray-900">
+                    <div className="font-medium">{row.q4Target}</div>
+                    <div className="text-xs text-blue-600 mt-1">{row.q4Months}</div>
+                  </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-center font-medium text-gray-900">{row.annualTarget}</td>
                   <td className="px-4 py-3 text-sm text-gray-500 max-w-xs">
                     <div className="truncate" title={row.implementor}>{row.implementor}</div>
