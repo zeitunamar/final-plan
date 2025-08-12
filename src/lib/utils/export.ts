@@ -95,9 +95,9 @@ const TABLE_HEADERS_AM = [
   'ክፍተት'
 ];
 
-const formatCurrency = (value: number | string | undefined): string => {
-  if (value === undefined || value === null || value === '') return '$0';
-  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+const formatCurrency = (amount: number | string | undefined): string => {
+  if (amount === undefined || amount === null || amount === '') return '$0';
+  const numValue = typeof amount === 'string' ? parseFloat(value) : amount;
   return `$${numValue.toLocaleString()}`;
 };
 
@@ -121,9 +121,9 @@ export const exportToExcel = async (
     // Select headers based on language
     const headers = language === 'am' ? TABLE_HEADERS_AM : TABLE_HEADERS_EN;
     
-    // Transform data to match table structure and add to worksheet
+    // Transform data to match table structure with all 26 columns
     const tableData = data.map((row, index) => {
-      console.log(`Processing row ${index + 1}:`, row);
+      console.log(`Processing Excel row ${index + 1}:`, row);
       
       return [
         row.No || '',
@@ -155,7 +155,7 @@ export const exportToExcel = async (
       ];
     });
 
-    console.log(`Converted ${data.length} data rows to ${tableData.length} table rows`);
+    console.log(`Converted ${data.length} data rows to ${tableData.length} Excel table rows`);
 
     // Create worksheet with headers and data
     const worksheetData = [headers, ...tableData];
@@ -178,8 +178,8 @@ export const exportToExcel = async (
       if (!worksheet[cellAddress]) continue;
       
       worksheet[cellAddress].s = {
-        fill: { fgColor: { rgb: "4F46E5" } }, // Blue background
-        font: { color: { rgb: "FFFFFF" }, bold: true }, // White text, bold
+        fill: { fgColor: { rgb: "4F46E5" } },
+        font: { color: { rgb: "FFFFFF" }, bold: true },
         alignment: { horizontal: "center", vertical: "center" }
       };
     }
@@ -241,15 +241,11 @@ export const exportToPDF = async (
         row['Performance Measure/Main Activity'] || '',
         row.Weight || '',
         row.Baseline || '',
-        row.Q1Target || '',
-        row.Q1Months || '',
-        row.Q2Target || '',
-        row.Q2Months || '',
+        `${row.Q1Target || ''}\n${row.Q1Months || ''}`,
+        `${row.Q2Target || ''}\n${row.Q2Months || ''}`,
         row.SixMonthTarget || '',
-        row.Q3Target || '',
-        row.Q3Months || '',
-        row.Q4Target || '',
-        row.Q4Months || '',
+        `${row.Q3Target || ''}\n${row.Q3Months || ''}`,
+        `${row.Q4Target || ''}\n${row.Q4Months || ''}`,
         row.AnnualTarget || '',
         row.Implementor || '',
         formatCurrency(row.BudgetRequired),
@@ -275,7 +271,7 @@ export const exportToPDF = async (
       doc.text(`Period: ${metadata.fromDate || 'N/A'} - ${metadata.toDate || 'N/A'}`, 20, 50);
     }
 
-    // Add table
+    // Add table with all data
     (doc as any).autoTable({
       head: [headers],
       body: tableData,
@@ -287,42 +283,38 @@ export const exportToPDF = async (
         lineColor: [200, 200, 200]
       },
       headStyles: {
-        fillColor: [79, 70, 229], // Blue color matching the gradient
+        fillColor: [79, 70, 229],
         textColor: 255,
         fontSize: 7,
         fontStyle: 'bold',
         halign: 'center'
       },
       columnStyles: {
-        0: { cellWidth: 8, halign: 'center' },   // No.
-        1: { cellWidth: 25, halign: 'left' },    // Strategic Objective
-        2: { cellWidth: 12, halign: 'center' },  // Objective Weight
-        3: { cellWidth: 25, halign: 'left' },    // Strategic Initiative
-        4: { cellWidth: 12, halign: 'center' },  // Initiative Weight
-        5: { cellWidth: 30, halign: 'left' },    // PM/MA Name
-        6: { cellWidth: 10, halign: 'center' },  // Weight
-        7: { cellWidth: 15, halign: 'center' },  // Baseline
-        8: { cellWidth: 12, halign: 'center' },  // Q1 Target
-        9: { cellWidth: 15, halign: 'center' },  // Q1 Months
-        10: { cellWidth: 12, halign: 'center' }, // Q2 Target
-        11: { cellWidth: 15, halign: 'center' }, // Q2 Months
-        12: { cellWidth: 15, halign: 'center' }, // 6-Month Target
-        13: { cellWidth: 12, halign: 'center' }, // Q3 Target
-        14: { cellWidth: 15, halign: 'center' }, // Q3 Months
-        15: { cellWidth: 12, halign: 'center' }, // Q4 Target
-        16: { cellWidth: 15, halign: 'center' }, // Q4 Months
-        17: { cellWidth: 15, halign: 'center' }, // Annual Target
-        18: { cellWidth: 20, halign: 'left' },   // Implementor
-        19: { cellWidth: 18, halign: 'right' },  // Budget Required
-        20: { cellWidth: 15, halign: 'right' },  // Government
-        21: { cellWidth: 15, halign: 'right' },  // Partners
-        22: { cellWidth: 12, halign: 'right' },  // SDG
-        23: { cellWidth: 12, halign: 'right' },  // Other
-        24: { cellWidth: 18, halign: 'right' },  // Total Available
-        25: { cellWidth: 15, halign: 'right' }   // Gap
+        0: { cellWidth: 8, halign: 'center' },
+        1: { cellWidth: 25, halign: 'left' },
+        2: { cellWidth: 12, halign: 'center' },
+        3: { cellWidth: 25, halign: 'left' },
+        4: { cellWidth: 12, halign: 'center' },
+        5: { cellWidth: 30, halign: 'left' },
+        6: { cellWidth: 10, halign: 'center' },
+        7: { cellWidth: 15, halign: 'center' },
+        8: { cellWidth: 20, halign: 'center' },
+        9: { cellWidth: 20, halign: 'center' },
+        10: { cellWidth: 15, halign: 'center' },
+        11: { cellWidth: 20, halign: 'center' },
+        12: { cellWidth: 15, halign: 'center' },
+        13: { cellWidth: 20, halign: 'center' },
+        14: { cellWidth: 15, halign: 'center' },
+        15: { cellWidth: 18, halign: 'right' },
+        16: { cellWidth: 15, halign: 'right' },
+        17: { cellWidth: 15, halign: 'right' },
+        18: { cellWidth: 12, halign: 'right' },
+        19: { cellWidth: 12, halign: 'right' },
+        20: { cellWidth: 18, halign: 'right' },
+        21: { cellWidth: 15, halign: 'right' }
       },
       alternateRowStyles: {
-        fillColor: [248, 250, 252] // Light gray for alternate rows
+        fillColor: [248, 250, 252]
       }
     });
 
@@ -382,7 +374,6 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
         'TotalAvailable': '-',
         'Gap': '-'
       });
-      objectiveAdded = true;
     } else {
       objective.initiatives.forEach((initiative: any) => {
         if (!initiative) return;
@@ -429,7 +420,7 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
           allItems.forEach((item: any) => {
             if (!item) return;
             
-            const isPerformanceMeasure = performanceMeasures.includes(item);
+            const isPerformanceMeasure = item.type === 'Performance Measure';
             
             // Calculate budget values (same logic as table)
             let budgetRequired = 0;
@@ -458,26 +449,13 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
               ? Number(item.q1_target || 0) + Number(item.q2_target || 0) 
               : Number(item.q2_target || 0);
             
-            // Get selected months for each quarter - WITH DEBUG LOGGING
-            console.log(`Processing item "${item.name}":`, {
-              selected_months: item.selected_months,
-              selected_quarters: item.selected_quarters,
-              type: isPerformanceMeasure ? 'Performance Measure' : 'Main Activity'
-            });
-            // Add prefix based on item type
-            const displayName = isPerformanceMeasure 
-              ? `PM: ${item.name}` 
-              : `MA: ${item.name}`;
-            
-
+            // Get selected months for each quarter
             const q1Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q1');
             const q2Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q2');
             const q3Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q3');
             const q4Months = getMonthsForQuarter(item.selected_months || [], item.selected_quarters || [], 'Q4');
 
-            console.log(`Calculated months for "${item.name}":`, { q1Months, q2Months, q3Months, q4Months });
-
-            // Add prefix based on item type - FIXED PREFIX LOGIC
+            // Add prefix based on item type
             const displayName = isPerformanceMeasure 
               ? `PM: ${item.name}` 
               : `MA: ${item.name}`;
@@ -489,18 +467,17 @@ export const processDataForExport = (objectives: StrategicObjective[], language:
               'Strategic Initiative': initiativeAddedForObjective ? '' : (initiative.name || 'Untitled Initiative'),
               'Initiative Weight': initiativeAddedForObjective ? '' : `${initiative.weight || 0}%`,
               'Performance Measure/Main Activity': displayName,
-              'Performance Measure/Main Activity': displayName, // USING THE DISPLAY NAME WITH PREFIX
               'Weight': `${item.weight || 0}%`,
               'Baseline': item.baseline || '-',
               'Q1Target': item.q1_target || 0,
-              'Q1Months': q1Months, // ACTUAL MONTHS FOR Q1
+              'Q1Months': q1Months,
               'Q2Target': item.q2_target || 0,
-              'Q2Months': q2Months, // ACTUAL MONTHS FOR Q2
+              'Q2Months': q2Months,
               'SixMonthTarget': sixMonthTarget,
               'Q3Target': item.q3_target || 0,
-              'Q3Months': q3Months, // ACTUAL MONTHS FOR Q3
+              'Q3Months': q3Months,
               'Q4Target': item.q4_target || 0,
-              'Q4Months': q4Months, // ACTUAL MONTHS FOR Q4
+              'Q4Months': q4Months,
               'AnnualTarget': item.annual_target || 0,
               'Implementor': initiative.organization_name || 
                             (item.organization_name) ||
