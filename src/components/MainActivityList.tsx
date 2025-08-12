@@ -1023,17 +1023,4 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
   );
 };
 
-export default MainActivityList;</action>
-              onCancel={() => {
-                setShowBudgetForm(false);
-                setSelectedActivityType(null);
-              }}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 export default MainActivityList;
