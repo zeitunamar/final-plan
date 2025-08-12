@@ -926,12 +926,36 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                                 </button>
                               )}
                               <button
-                                onClick={() => handleDeleteSubActivity(subActivity.id)}
-                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
-                                title="Delete sub-activity"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                                    {subActivity.budget ? (
+                                      <div className="space-y-1">
+                                        <div className="text-sm font-medium text-green-600">
+                                          Budget: ${(subActivity.budget.budget_calculation_type === 'WITH_TOOL' 
+                                            ? Number(subActivity.budget.estimated_cost_with_tool || 0)
+                                            : Number(subActivity.budget.estimated_cost_without_tool || 0)).toLocaleString()}
+                                        </div>
+                                        <div className="text-xs text-blue-600">
+                                          Funding: ${(
+                                            Number(subActivity.budget.government_treasury || 0) +
+                                            Number(subActivity.budget.partners_funding || 0) +
+                                            Number(subActivity.budget.sdg_funding || 0) +
+                                            Number(subActivity.budget.other_funding || 0)
+                                          ).toLocaleString()}
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                          Gap: ${Math.max(0, 
+                                            (subActivity.budget.budget_calculation_type === 'WITH_TOOL' 
+                                              ? Number(subActivity.budget.estimated_cost_with_tool || 0)
+                                              : Number(subActivity.budget.estimated_cost_without_tool || 0)) -
+                                            (Number(subActivity.budget.government_treasury || 0) +
+                                             Number(subActivity.budget.partners_funding || 0) +
+                                             Number(subActivity.budget.sdg_funding || 0) +
+                                             Number(subActivity.budget.other_funding || 0))
+                                          ).toLocaleString()}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="text-sm text-gray-500">No budget</div>
+                                    )}
                             </div>
                           </div>
                           
