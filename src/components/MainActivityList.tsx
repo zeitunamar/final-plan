@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mainActivities, subActivities, activityBudgets } from '../lib/api';
-import { BarChart3, AlertCircle, CheckCircle, Edit, Trash2, Lock, PlusCircle, Building2, Info, DollarSign, Eye, Plus, Settings } from 'lucide-react';
+import { BarChart3, AlertCircle, CheckCircle, Edit, Trash2, Lock, PlusCircle, Building2, Info, DollarSign, Eye, Plus, Settings, Activity } from 'lucide-react';
 import { useLanguage } from '../lib/i18n/LanguageContext';
 import type { MainActivity, SubActivity, ActivityType } from '../types/plan';
 import { auth } from '../lib/api';
@@ -46,17 +46,24 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
   const queryClient = useQueryClient();
   const [validationSuccess, setValidationSuccess] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [selectedActivityForSubActivities, setSelectedActivityForSubActivities] = useState<MainActivity | null>(null);
-  const [showSubActivitiesModal, setShowSubActivitiesModal] = useState(false);
-  const [showCostingTool, setShowCostingTool] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<any>(null);
+  const [showModal, setShowModal] = useState(false);
   const [selectedActivityType, setSelectedActivityType] = useState<ActivityType | null>(null);
+  const [isViewOnly, setIsViewOnly] = useState(false);
+  const [selectedSubActivity, setSelectedSubActivity] = useState<any>(null);
   const [showBudgetForm, setShowBudgetForm] = useState(false);
-  const [calculatedCostData, setCalculatedCostData] = useState<any>(null);
-  const [currentSubActivity, setCurrentSubActivity] = useState<SubActivity | null>(null);
-  
-  // Fetch all main activities for this initiative
-  const { data: activitiesList, isLoading } = useQuery({
-    queryKey: ['main-activities', initiativeId, planKey],
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Fetch current user role and organization
+  const { data: currentUser } = useQuery({
+    queryKey: ['current-user'],
+    queryFn: auth.getCurrentUser,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  // Fetch all main activities for the given initiative
+  const { data: activitiesList, isLoading, refetch } = useQuery({
+    queryKey: ['main-activities', initiativeId, planKey, refreshKey],
     queryFn: async () => {
       if (!initiativeId) {
         console.log('Missing initiativeId, cannot fetch main activities');
@@ -81,352 +88,189 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
     }
   });
 
-  // Delete sub-activity mutation
-  const deleteSubActivityMutation = useMutation({
-    mutationFn: (subActivityId: string) => subActivities.delete(subActivityId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['main-activities', initiativeId, planKey] });
-      queryClient.invalidateQueries({ queryKey: ['sub-activities'] });
-    }
-  });
+  // Force refresh function
+  const forceRefresh = () => {
+    setRefreshKey(prev => prev + 1);
+    refetch();
+  };
 
-  // Create sub-activity mutation
-  const createSubActivityMutation = useMutation({
-    mutationFn: (subActivityData: any) => subActivities.create(subActivityData),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['main-activities', initiativeId, planKey] });
-      queryClient.invalidateQueries({ queryKey: ['sub-activities'] });
-    }
-  });
+  // Calculate budget for each activity
+  const calculateActivityBudget = (activity: any) => {
+    let budgetRequired = 0;
+    let government = 0;
+    let partners = 0;
+    let sdg = 0;
+    let other = 0;
+    let totalAvailable = 0;
+    let gap = 0;
+    
+    console.log('Calculating budget for activity:', activity.name);
+    console.log('Sub-activities:', activity.sub_activities?.length || 0);
 
-  // Create budget mutation
-  const createBudgetMutation = useMutation({
-    mutationFn: (budgetData: any) => activityBudgets.create(budgetData),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['main-activities', initiativeId, planKey] });
-      queryClient.invalidateQueries({ queryKey: ['activity-budgets'] });
-    }
-  });
+    try {
+      // Calculate budget from sub-activities if they exist
+      if (activity.sub_activities && activity.sub_activities.length > 0) {
+        console.log('Using sub-activities for budget calculation');
+        activity.sub_activities.forEach((subActivity: any) => {
+          if (subActivity) {
+            console.log('Processing sub-activity:', subActivity.name || 'Unnamed');
+            
+            const subCost = subActivity.budget_calculation_type === 'WITH_TOOL'
+              ? Number(subActivity.estimated_cost_with_tool || 0)
+              : Number(subActivity.estimated_cost_without_tool || 0);
+            
+            const subGov = Number(subActivity.government_treasury || 0);
+            const subPartners = Number(subActivity.partners_funding || 0);
+            const subSdg = Number(subActivity.sdg_funding || 0);
+            const subOther = Number(subActivity.other_funding || 0);
+            
+            console.log('Sub-activity budget details:', {
+              name: subActivity.name,
+              cost: subCost,
+              government: subGov,
+              partners: subPartners,
+              sdg: subSdg,
+              other: subOther
+            });
+            
+            budgetRequired += subCost;
+            government += subGov;
+            partners += subPartners;
+            sdg += subSdg;
+            other += subOther;
+          }
+        });
+      } else if (activity.budget) {
+        console.log('Using legacy budget for calculation');
+        // Use legacy budget if no sub-activities
+        budgetRequired = activity.budget.budget_calculation_type === 'WITH_TOOL' 
+          ? Number(activity.budget.estimated_cost_with_tool || 0)
+          : Number(activity.budget.estimated_cost_without_tool || 0);
+        
+        government = Number(activity.budget.government_treasury || 0);
+        partners = Number(activity.budget.partners_funding || 0);
+        sdg = Number(activity.budget.sdg_funding || 0);
+        other = Number(activity.budget.other_funding || 0);
+      }
 
-  // Handle activity deletion
+      totalAvailable = government + partners + sdg + other;
+      gap = Math.max(0, budgetRequired - totalAvailable);
+      
+      console.log('Final budget calculation:', {
+        budgetRequired,
+        totalAvailable,
+        government,
+        partners,
+        sdg,
+        other,
+        gap
+      });
+    } catch (error) {
+      console.error('Error calculating activity budget:', error);
+    }
+
+    return {
+      budgetRequired,
+      government,
+      partners,
+      sdg,
+      other,
+      totalAvailable,
+      gap
+    };
+  };
+
+  // Calculate modal budget data
+  const {
+    budgetRequired: modalBudgetRequired,
+    government: modalGovernment,
+    partners: modalPartners,
+    sdg: modalSdg,
+    other: modalOther,
+    totalAvailable: modalTotalAvailable,
+    gap: modalGap
+  } = calculateActivityBudget(selectedActivity);
+  
+  // Add effect to refresh modal data when sub-activities change
+  useEffect(() => {
+    if (selectedActivity) {
+      // Refetch the specific activity data to get updated sub-activities
+      const refreshActivityData = async () => {
+        try {
+          console.log('Refreshing activity data for modal');
+          await refetch();
+        } catch (error) {
+          console.error('Failed to refresh activity data:', error);
+        }
+      };
+      
+      refreshActivityData();
+    }
+  }, [selectedActivity?.sub_activities?.length, refetch]);
+
+  const handleSelectActivity = (activity: any) => {
+    console.log('Selected activity:', activity);
+    setSelectedActivity(activity);
+    setShowModal(true);
+    setIsViewOnly(!isUserPlanner);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setSelectedActivity(null);
+    setSelectedActivityType(null);
+    setShowBudgetForm(false);
+    setSelectedSubActivity(null);
+  };
+
+  const handleCreateSubActivity = (activityType: ActivityType) => {
+    console.log('Creating sub-activity of type:', activityType);
+    setSelectedActivityType(activityType);
+    setShowBudgetForm(true);
+  };
+
+  const handleSubActivitySaved = async (subActivityData: any) => {
+    try {
+      console.log('Saving sub-activity with data:', subActivityData);
+      await subActivities.create(subActivityData);
+      
+      // Force refresh the main activities list to get updated sub-activities
+      forceRefresh();
+      
+      // Also refresh the modal data
+      if (selectedActivity) {
+        // Update the selected activity's sub-activities locally for immediate UI update
+        const updatedActivity = { ...selectedActivity };
+        if (!updatedActivity.sub_activities) {
+          updatedActivity.sub_activities = [];
+        }
+        updatedActivity.sub_activities.push(subActivityData);
+        setSelectedActivity(updatedActivity);
+      }
+      
+      setShowBudgetForm(false);
+      setSelectedActivityType(null);
+      
+      console.log('Sub-activity saved successfully, data refreshed');
+    } catch (error) {
+      console.error('Failed to save sub-activity:', error);
+    }
+  };
+
+  const handleDeleteSubActivity = async (subActivityId: string) => {
+    try {
+      await subActivities.delete(subActivityId);
+      forceRefresh(); // Refresh data after deletion
+    } catch (error) {
+      console.error('Failed to delete sub-activity:', error);
+    }
+  };
+
   const handleDeleteActivity = (activityId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     
     if (window.confirm('Are you sure you want to delete this main activity? This will also delete all sub-activities and budgets. This action cannot be undone.')) {
       deleteActivityMutation.mutate(activityId);
-    }
-  };
-
-  // Handle sub-activity management
-  const handleManageSubActivities = (activity: MainActivity, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSelectedActivityForSubActivities(activity);
-    setShowSubActivitiesModal(true);
-  };
-
-  // Handle creating new sub-activity - NOW WITH COSTING TOOL FLOW
-  const handleCreateSubActivity = async (activity: MainActivity, activityType: ActivityType) => {
-    console.log(`Creating ${activityType} sub-activity for main activity:`, activity.name);
-    
-    // Set the activity type and show costing tool
-    setSelectedActivityType(activityType);
-    setShowCostingTool(true);
-    setCurrentSubActivity(null); // New sub-activity
-  };
-
-  // Handle costing tool completion
-  const handleCostingComplete = async (costData: any) => {
-    console.log('Costing tool completed with data:', costData);
-    
-    // Store the calculated cost data
-    setCalculatedCostData(costData);
-    
-    // Hide costing tool and show budget form
-    setShowCostingTool(false);
-    setShowBudgetForm(true);
-  };
-
-  // Handle budget form submission
-  const handleBudgetSubmit = async (budgetData: any) => {
-    try {
-      console.log('Budget form submitted with data:', budgetData);
-      
-      if (!selectedActivityForSubActivities || !selectedActivityType) {
-        throw new Error('Missing activity or activity type');
-      }
-
-      if (currentSubActivity) {
-        // Update existing sub-activity budget
-        const finalBudgetData = {
-          ...budgetData,
-          sub_activity: currentSubActivity.id,
-          activity: null,
-          ...calculatedCostData
-        };
-        
-        console.log('Updating existing sub-activity budget:', finalBudgetData);
-        await createBudgetMutation.mutateAsync(finalBudgetData);
-      } else {
-        // Create new sub-activity with budget
-        const subActivityData = {
-          main_activity: selectedActivityForSubActivities.id,
-          name: `${selectedActivityType} for ${selectedActivityForSubActivities.name}`,
-          activity_type: selectedActivityType,
-          description: `${selectedActivityType} activity under ${selectedActivityForSubActivities.name}`
-        };
-
-        console.log('Creating new sub-activity:', subActivityData);
-        const createdSubActivity = await createSubActivityMutation.mutateAsync(subActivityData);
-        console.log('Sub-activity created:', createdSubActivity);
-
-        // Then create the budget for the sub-activity
-        const finalBudgetData = {
-          ...budgetData,
-          sub_activity: createdSubActivity.data.id,
-          activity: null,
-          ...calculatedCostData
-        };
-
-        console.log('Creating budget for new sub-activity:', finalBudgetData);
-        await createBudgetMutation.mutateAsync(finalBudgetData);
-      }
-
-      // Reset state and close modals
-      setShowBudgetForm(false);
-      setShowSubActivitiesModal(false);
-      setSelectedActivityForSubActivities(null);
-      setSelectedActivityType(null);
-      setCalculatedCostData(null);
-      setCurrentSubActivity(null);
-
-    } catch (error) {
-      console.error('Failed to create sub-activity with budget:', error);
-      // Don't close modals on error so user can retry
-    }
-  };
-
-  // Handle deleting sub-activity
-  const handleDeleteSubActivity = async (subActivityId: string) => {
-    if (window.confirm('Are you sure you want to delete this activity and its budget?')) {
-      try {
-        await deleteSubActivityMutation.mutateAsync(subActivityId);
-      } catch (error) {
-        console.error('Failed to delete sub-activity:', error);
-      }
-    }
-  };
-
-  // Handle activity validation
-  const handleValidateActivities = () => {
-    setValidationSuccess(null);
-    setValidationError(null);
-    
-    console.log('Validating activities:', {
-      initiativeWeight,
-      totalWeight: total_activities_weight,
-      isValid: is_valid
-    });
-
-    if (is_valid) {
-      setValidationSuccess(`Main activities weights are valid (${total_activities_weight.toFixed(2)}% = ${expected_activities_weight.toFixed(2)}%)`);
-      setTimeout(() => setValidationSuccess(null), 3000);
-    } else {
-      setValidationError(`Main activities weights (${total_activities_weight.toFixed(2)}%) must equal 65% of initiative weight (${expected_activities_weight.toFixed(2)}%)`);
-      setTimeout(() => setValidationError(null), 5000);
-    }
-  };
-
-  // Calculate budget total for activity (legacy + sub-activities)
-  const calculateActivityTotalBudget = (activity: MainActivity): number => {
-    let total = 0;
-    
-    // Add legacy budget if exists
-    if (activity.budget) {
-      const legacyBudget = activity.budget.budget_calculation_type === 'WITH_TOOL' 
-        ? Number(activity.budget.estimated_cost_with_tool || 0)
-        : Number(activity.budget.estimated_cost_without_tool || 0);
-      total += legacyBudget;
-      console.log(`Legacy budget for ${activity.name}: ${legacyBudget}`);
-    }
-    
-    // Add sub-activities budgets
-    if (activity.sub_activities && activity.sub_activities.length > 0) {
-      activity.sub_activities.forEach(subActivity => {
-        if (subActivity.budget) {
-          const subBudget = subActivity.budget.budget_calculation_type === 'WITH_TOOL'
-            ? Number(subActivity.budget.estimated_cost_with_tool || 0)
-            : Number(subActivity.budget.estimated_cost_without_tool || 0);
-          total += subBudget;
-          console.log(`Sub-activity ${subActivity.name} budget: ${subBudget}`);
-        }
-      });
-    }
-    
-    // Use total_budget property if available (calculated from backend)
-    if (activity.total_budget && activity.total_budget > total) {
-      total = Number(activity.total_budget);
-      console.log(`Backend total_budget for ${activity.name}: ${total}`);
-    }
-    
-    console.log(`Final calculated budget for ${activity.name}: ${total}`);
-    return total;
-  };
-
-  // Calculate total funding for activity
-  const calculateActivityTotalFunding = (activity: MainActivity): number => {
-    let total = 0;
-    
-    // Add legacy budget funding if exists
-    if (activity.budget) {
-      total += Number(activity.budget.government_treasury || 0) +
-               Number(activity.budget.sdg_funding || 0) +
-               Number(activity.budget.partners_funding || 0) +
-               Number(activity.budget.other_funding || 0);
-      console.log(`Legacy funding for ${activity.name}: ${total}`);
-    }
-    
-    // Add sub-activities funding
-    if (activity.sub_activities && activity.sub_activities.length > 0) {
-      activity.sub_activities.forEach(subActivity => {
-        if (subActivity.budget) {
-          const subFunding = Number(subActivity.budget.government_treasury || 0) +
-                   Number(subActivity.budget.sdg_funding || 0) +
-                   Number(subActivity.budget.partners_funding || 0) +
-                   Number(subActivity.budget.other_funding || 0);
-          total += subFunding;
-          console.log(`Sub-activity ${subActivity.name} funding: ${subFunding}`);
-        }
-      });
-    }
-    
-    // Use total_funding property if available (calculated from backend)
-    if (activity.total_funding && activity.total_funding > total) {
-      total = Number(activity.total_funding);
-      console.log(`Backend total_funding for ${activity.name}: ${total}`);
-    }
-    
-    console.log(`Final calculated funding for ${activity.name}: ${total}`);
-    return total;
-  };
-
-  // Calculate funding breakdown for activity
-  const calculateActivityFundingBreakdown = (activity: MainActivity) => {
-    console.log('Calculating totals for activity:', activity.name);
-    console.log('Sub-activities count:', activity.sub_activities?.length || 0);
-    console.log('Legacy budget:', activity.budget ? 'exists' : 'none');
-    
-    let totalBudget = 0;
-    let totalFunding = 0;
-    let government = 0;
-    let partners = 0;
-    let sdg = 0;
-    let other = 0;
-    
-    // Add legacy budget funding if exists
-    if (activity.budget) {
-      government += Number(activity.budget.government_treasury || 0);
-      partners += Number(activity.budget.partners_funding || 0);
-      sdg += Number(activity.budget.sdg_funding || 0);
-      other += Number(activity.budget.other_funding || 0);
-      
-      // Add legacy budget to total
-      const legacyBudget = activity.budget.budget_calculation_type === 'WITH_TOOL'
-        ? Number(activity.budget.estimated_cost_with_tool || 0)
-        : Number(activity.budget.estimated_cost_without_tool || 0);
-      totalBudget += legacyBudget;
-      
-      console.log('Using legacy budget:', {
-        budget: legacyBudget,
-        government: activity.budget.government_treasury,
-        partners: activity.budget.partners_funding,
-        sdg: activity.budget.sdg_funding,
-        other: activity.budget.other_funding
-      });
-    }
-    
-    // Add sub-activities funding
-    if (activity.sub_activities && activity.sub_activities.length > 0) {
-      activity.sub_activities.forEach(subActivity => {
-        // Use direct fields from SubActivity model
-        const subBudgetRequired = subActivity.budget_calculation_type === 'WITH_TOOL'
-          ? Number(subActivity.estimated_cost_with_tool || 0)
-          : Number(subActivity.estimated_cost_without_tool || 0);
-        
-        totalBudget += subBudgetRequired;
-        government += Number(subActivity.government_treasury || 0);
-        partners += Number(subActivity.partners_funding || 0);
-        sdg += Number(subActivity.sdg_funding || 0);
-        other += Number(subActivity.other_funding || 0);
-        
-        console.log(`Sub-activity ${subActivity.name}:`, {
-          budget: subBudgetRequired,
-          government: subActivity.government_treasury,
-          partners: subActivity.partners_funding,
-          sdg: subActivity.sdg_funding,
-          other: subActivity.other_funding
-        });
-      });
-    }
-    
-    const total = government + partners + sdg + other;
-    const fundingGap = Math.max(0, totalBudget - total);
-    
-    return {
-      government,
-      partners, 
-      sdg,
-      other,
-      total,
-      totalBudget,
-      fundingGap
-    };
-  };
-
-  // Close all modals
-  const closeAllModals = () => {
-    setShowSubActivitiesModal(false);
-    setShowCostingTool(false);
-    setShowBudgetForm(false);
-    setSelectedActivityForSubActivities(null);
-    setSelectedActivityType(null);
-    setCalculatedCostData(null);
-    setCurrentSubActivity(null);
-  };
-
-  // Render costing tool based on activity type
-  const renderCostingTool = () => {
-    if (!selectedActivityType || !showCostingTool) return null;
-
-    const commonProps = {
-      onCalculate: handleCostingComplete,
-      onCancel: () => {
-        setShowCostingTool(false);
-        setSelectedActivityType(null);
-      }
-    };
-
-    switch (selectedActivityType) {
-      case 'Training':
-        return <TrainingCostingTool {...commonProps} />;
-      case 'Meeting':
-      case 'Workshop':
-        return <MeetingWorkshopCostingTool {...commonProps} />;
-      case 'Printing':
-        return <PrintingCostingTool {...commonProps} />;
-      case 'Procurement':
-        return <ProcurementCostingTool {...commonProps} />;
-      case 'Supervision':
-        return <SupervisionCostingTool {...commonProps} />;
-      default:
-        // For 'Other' type, go directly to budget form with manual entry
-        setShowCostingTool(false);
-        setShowBudgetForm(true);
-        setCalculatedCostData({
-          budget_calculation_type: 'WITHOUT_TOOL',
-          activity_type: selectedActivityType,
-          estimated_cost_without_tool: 0
-        });
-        return null;
     }
   };
 
@@ -590,18 +434,6 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
             <p className="text-sm">{validationError}</p>
           </div>
         )}
-
-        {isUserPlanner && (
-          <div className="mt-4">
-            <button
-              onClick={handleValidateActivities}
-              disabled={filteredActivities.length === 0}
-              className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-            >
-              Validate Main Activities Weight
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Main Activities List */}
@@ -614,15 +446,12 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
         </h3>
         
         {filteredActivities.map((activity) => {
-          // Calculate corrected budget totals
-          const totalBudget = calculateActivityTotalBudget(activity);
-          const totalFunding = calculateActivityTotalFunding(activity);
-          const fundingGap = Math.max(0, totalBudget - totalFunding);
+          const { budgetRequired, totalAvailable, gap } = calculateActivityBudget(activity);
           
           return (
             <div
               key={activity.id}
-              onClick={() => onSelectActivity && onSelectActivity(activity)}
+              onClick={() => handleSelectActivity(activity)}
               className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:border-green-300 transition-colors cursor-pointer"
             >
               <div className="flex items-center justify-between mb-2">
@@ -645,7 +474,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                 <div>Q4: {activity.q4_target || 0}</div>
               </div>
               
-              {/* Enhanced Budget Summary with Sub-Activities */}
+              {/* Budget Summary */}
               <div className="mt-3 p-3 bg-gray-50 rounded-md border border-gray-200">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center">
@@ -653,42 +482,23 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                     <span className="text-sm font-medium text-gray-700">Budget Summary</span>
                   </div>
                   <div className="text-sm font-medium text-green-600">
-                    Total: ${totalBudget.toLocaleString()}
+                    Total: ${budgetRequired.toLocaleString()}
                   </div>
                 </div>
 
-                {/* Show legacy budget if exists */}
-                {activity.budget && (
-                  <div className="mb-3 p-2 bg-orange-50 rounded border border-orange-200">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-orange-700">Legacy Budget</span>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
-                        {activity.budget.activity_type || 'Other'}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-xs text-orange-600">
-                      Budget: ${(activity.budget.budget_calculation_type === 'WITH_TOOL' 
-                        ? Number(activity.budget.estimated_cost_with_tool || 0)
-                        : Number(activity.budget.estimated_cost_without_tool || 0)).toLocaleString()}
-                    </div>
-                  </div>
-                )}
-
-                {/* Show sub-activities if available */}
+                {/* Show sub-activities count if available */}
                 {activity.sub_activities && activity.sub_activities.length > 0 ? (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium text-gray-600">Sub-Activities ({activity.sub_activities.length})</span>
-                      <span className="text-xs text-blue-600">Total Funding: ${totalFunding.toLocaleString()}</span>
+                      <span className="text-xs text-blue-600">Total Funding: ${totalAvailable.toLocaleString()}</span>
                     </div>
                     
                     <div className="space-y-1">
-                      {activity.sub_activities.slice(0, 3).map((subActivity) => {
-                        const subBudget = subActivity.budget ? (
-                          subActivity.budget.budget_calculation_type === 'WITH_TOOL'
-                            ? Number(subActivity.budget.estimated_cost_with_tool || 0)
-                            : Number(subActivity.budget.estimated_cost_without_tool || 0)
-                        ) : 0;
+                      {activity.sub_activities.slice(0, 3).map((subActivity: any) => {
+                        const subBudget = subActivity.budget_calculation_type === 'WITH_TOOL'
+                          ? Number(subActivity.estimated_cost_with_tool || 0)
+                          : Number(subActivity.estimated_cost_without_tool || 0);
                         
                         return (
                           <div key={subActivity.id} className="flex justify-between items-center text-xs bg-white p-2 rounded border">
@@ -701,13 +511,9 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                               </span>
                             </div>
                             <div className="flex items-center space-x-2">
-                              {subActivity.budget ? (
-                                <span className="font-medium text-green-600">
-                                  ${subBudget.toLocaleString()}
-                                </span>
-                              ) : (
-                                <span className="text-gray-400">No budget</span>
-                              )}
+                              <span className="font-medium text-green-600">
+                                ${subBudget.toLocaleString()}
+                              </span>
                               {isUserPlanner && (
                                 <button
                                   onClick={(e) => {
@@ -733,12 +539,12 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                     
                     {/* Summary Stats */}
                     <div className="mt-2 pt-2 border-t border-gray-200 grid grid-cols-2 gap-2 text-xs text-gray-500">
-                      <div>Budget Required: ${totalBudget.toLocaleString()}</div>
-                      <div>Funding Available: ${totalFunding.toLocaleString()}</div>
+                      <div>Budget Required: ${budgetRequired.toLocaleString()}</div>
+                      <div>Funding Available: ${totalAvailable.toLocaleString()}</div>
                       <div className="col-span-2">
-                        <span className={`font-medium ${fundingGap > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                          Gap: ${fundingGap.toLocaleString()}
-                          {fundingGap <= 0 && ' (Fully Funded)'}
+                        <span className={`font-medium ${gap > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          Gap: ${gap.toLocaleString()}
+                          {gap <= 0 && ' (Fully Funded)'}
                         </span>
                       </div>
                     </div>
@@ -746,58 +552,6 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                 ) : (
                   <div className="text-xs text-gray-500 italic">
                     No sub-activities configured
-                  </div>
-                )}
-                
-                {/* Action Buttons */}
-                {isUserPlanner && (
-                  <div className="mt-3 flex justify-end space-x-2">
-                    <button
-                      onClick={(e) => handleManageSubActivities(activity, e)}
-                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center px-2 py-1 bg-blue-50 rounded transition-colors"
-                    >
-                      <Settings className="h-3 w-3 mr-1" />
-                      Manage Sub-Activities
-                    </button>
-                    
-                    {/* Legacy budget buttons for activities without sub-activities */}
-                    {(!activity.sub_activities || activity.sub_activities.length === 0) && !activity.budget && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onAddBudget) onAddBudget(activity);
-                        }}
-                        className="text-xs text-green-600 hover:text-green-800 flex items-center px-2 py-1 bg-green-50 rounded"
-                      >
-                        <DollarSign className="h-3 w-3 mr-1" />
-                        Add Legacy Budget
-                      </button>
-                    )}
-                    
-                    {activity.budget && (
-                      <>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onViewBudget) onViewBudget(activity);
-                          }}
-                          className="text-xs text-blue-600 hover:text-blue-800 flex items-center px-2 py-1 bg-blue-50 rounded"
-                        >
-                          <Eye className="h-3 w-3 mr-1" />
-                          View Budget
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onDeleteBudget) onDeleteBudget(activity.id);
-                          }}
-                          className="text-xs text-red-600 hover:text-red-800 flex items-center px-2 py-1 bg-red-50 rounded"
-                        >
-                          <Trash2 className="h-3 w-3 mr-1" />
-                          Delete Budget
-                        </button>
-                      </>
-                    )}
                   </div>
                 )}
               </div>
@@ -858,17 +612,17 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
         </div>
       )}
 
-      {/* Sub-Activities Management Modal */}
-      {showSubActivitiesModal && selectedActivityForSubActivities && !showCostingTool && !showBudgetForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      {/* Activity Detail Modal */}
+      {showModal && selectedActivity && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-40">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-200">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-medium text-gray-900">
-                  Manage Sub-Activities: {selectedActivityForSubActivities.name}
+                  {selectedActivity.name}
                 </h3>
                 <button
-                  onClick={closeAllModals}
+                  onClick={handleCloseModal}
                   className="text-gray-400 hover:text-gray-500"
                 >
                   <span className="sr-only">Close</span>
@@ -880,320 +634,255 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
             </div>
 
             <div className="p-6">
-              {/* Add Sub-Activity Buttons */}
-              <div className="mb-6">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Add New Sub-Activity (with Costing Tool)</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {(['Training', 'Meeting', 'Workshop', 'Supervision', 'Procurement', 'Printing', 'Other'] as ActivityType[]).map((type) => (
-                    <button
-                      key={type}
-                      onClick={() => handleCreateSubActivity(selectedActivityForSubActivities, type)}
-                      className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 flex items-center justify-center transition-colors"
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      {type}
-                    </button>
-                  ))}
+              <div className="space-y-6">
+                {/* Activity Details */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Weight</label>
+                    <p className="text-lg font-semibold text-green-600">{selectedActivity.weight}%</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Baseline</label>
+                    <p className="text-sm text-gray-900">{selectedActivity.baseline || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Annual Target</label>
+                    <p className="text-sm text-gray-900">{selectedActivity.annual_target || 0}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Organization</label>
+                    <p className="text-sm text-gray-900">{selectedActivity.organization_name || 'Not specified'}</p>
+                  </div>
                 </div>
-                <p className="mt-2 text-xs text-blue-600">
-                  Click any activity type above to open the costing tool for budget calculation
-                </p>
-              </div>
 
-              {/* Current Sub-Activities */}
-              <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-3">
-                  Current Sub-Activities ({selectedActivityForSubActivities.sub_activities?.length || 0})
-                </h4>
-                
-                {!selectedActivityForSubActivities.sub_activities || selectedActivityForSubActivities.sub_activities.length === 0 ? (
-                  <div className="text-center p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                    <PlusCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-500">No sub-activities created yet</p>
-                    <p className="text-xs text-gray-400">Use the buttons above to add different activity types with costing tools</p>
+                {/* Quarterly Targets */}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Quarterly Targets</h4>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="text-center p-3 bg-blue-50 rounded-lg">
+                      <div className="text-lg font-semibold text-blue-600">{selectedActivity.q1_target || 0}</div>
+                      <div className="text-xs text-gray-500">Q1</div>
+                    </div>
+                    <div className="text-center p-3 bg-green-50 rounded-lg">
+                      <div className="text-lg font-semibold text-green-600">{selectedActivity.q2_target || 0}</div>
+                      <div className="text-xs text-gray-500">Q2</div>
+                    </div>
+                    <div className="text-center p-3 bg-yellow-50 rounded-lg">
+                      <div className="text-lg font-semibold text-yellow-600">{selectedActivity.q3_target || 0}</div>
+                      <div className="text-xs text-gray-500">Q3</div>
+                    </div>
+                    <div className="text-center p-3 bg-red-50 rounded-lg">
+                      <div className="text-lg font-semibold text-red-600">{selectedActivity.q4_target || 0}</div>
+                      <div className="text-xs text-gray-500">Q4</div>
+                    </div>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {selectedActivityForSubActivities.sub_activities.map((subActivity) => {
-                      const subBudget = subActivity.budget ? (
-                        subActivity.budget.budget_calculation_type === 'WITH_TOOL'
-                          ? Number(subActivity.budget.estimated_cost_with_tool || 0)
-                          : Number(subActivity.budget.estimated_cost_without_tool || 0)
-                      ) : 0;
-                      
-                      const subTotalFunding = subActivity.budget ? (
-                        Number(subActivity.budget.government_treasury || 0) +
-                        Number(subActivity.budget.sdg_funding || 0) +
-                        Number(subActivity.budget.partners_funding || 0) +
-                        Number(subActivity.budget.other_funding || 0)
-                      ) : 0;
-                      
-                      const subFundingGap = Math.max(0, subBudget - subTotalFunding);
-                      
-                      return (
-                        <div key={subActivity.id} className="bg-white p-4 rounded-lg border border-gray-200">
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <div className="flex items-center mb-2">
-                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800 mr-2">
-                                  {subActivity.activity_type}
-                                </span>
-                                <h5 className="font-medium text-gray-900">{subActivity.name}</h5>
-                              </div>
-                              {subActivity.description && (
-                                <p className="text-sm text-gray-600 mb-2">{subActivity.description}</p>
-                              )}
-                            </div>
-                            
-                            <div className="flex items-center space-x-2">
-                              {subActivity.budget && (
-                                <button
-                                  onClick={() => {
-                                    setCurrentSubActivity(subActivity);
-                                    setSelectedActivityType(subActivity.activity_type as ActivityType);
-                                    setCalculatedCostData(subActivity.budget);
-                                    setShowBudgetForm(true);
-                                  }}
-                                  className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
-                                  title="Edit budget"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </button>
-                              )}
-                              <button
-                                onClick={() => handleDeleteSubActivity(subActivity.id)}
-                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
-                                title="Delete sub-activity"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </div>
-                          
-                          {/* Budget Information */}
-                          <div className="mt-3">
-                            {subActivity.budget ? (
-                              <div className="space-y-1">
-                                <div className="text-sm font-medium text-green-600">
-                                  Budget: ${(subActivity.budget.budget_calculation_type === 'WITH_TOOL' 
-                                    ? Number(subActivity.budget.estimated_cost_with_tool || 0)
-                                    : Number(subActivity.budget.estimated_cost_without_tool || 0)).toLocaleString()}
-                                </div>
-                                <div className="text-xs text-blue-600">
-                                  Funding: ${(
-                                    Number(subActivity.budget.government_treasury || 0) +
-                                    Number(subActivity.budget.partners_funding || 0) +
-                                    Number(subActivity.budget.sdg_funding || 0) +
-                                    Number(subActivity.budget.other_funding || 0)
-                                  ).toLocaleString()}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  Gap: ${Math.max(0, 
-                                    (subActivity.budget.budget_calculation_type === 'WITH_TOOL' 
-                                      ? Number(subActivity.budget.estimated_cost_with_tool || 0)
-                                      : Number(subActivity.budget.estimated_cost_without_tool || 0)) -
-                                    (Number(subActivity.budget.government_treasury || 0) +
-                                     Number(subActivity.budget.partners_funding || 0) +
-                                     Number(subActivity.budget.sdg_funding || 0) +
-                                     Number(subActivity.budget.other_funding || 0))
-                                  ).toLocaleString()}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="text-sm text-gray-500">No budget</div>
-                            )}
-                          </div>
-                          
-                          {/* Budget Information */}
-                          {subActivity.budget ? (
-                            <div className="mt-3 p-3 bg-green-50 rounded-md border border-green-200">
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                                <div>
-                                  <span className="text-gray-500">Budget:</span>
-                                  <div className="font-medium text-green-600">
-                                    ${subBudget.toLocaleString()}
-                                  </div>
-                                </div>
-                                <div>
-                                  <span className="text-gray-500">Government:</span>
-                                  <div className="font-medium">${Number(subActivity.budget.government_treasury || 0).toLocaleString()}</div>
-                                </div>
-                                <div>
-                                  <span className="text-gray-500">Partners:</span>
-                                  <div className="font-medium">${Number(subActivity.budget.partners_funding || 0).toLocaleString()}</div>
-                                </div>
-                                <div>
-                                  <span className="text-gray-500">Gap:</span>
-                                  <div className={`font-medium ${subFundingGap > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                    ${subFundingGap.toLocaleString()}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="mt-3 p-3 bg-gray-50 rounded-md border border-gray-200 text-center">
-                              <p className="text-xs text-gray-500 mb-2">No budget configured</p>
-                              <button
-                                onClick={() => {
-                                  setCurrentSubActivity(subActivity);
-                                  setSelectedActivityType(subActivity.activity_type as ActivityType);
-                                  setShowCostingTool(true);
-                                }}
-                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center mx-auto px-2 py-1 bg-blue-50 rounded"
-                              >
-                                <DollarSign className="h-3 w-3 mr-1" />
-                                Add Budget
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                </div>
 
-              {/* Activity Totals */}
-              <div className="mt-6 pt-4 border-t border-gray-200">
-                {/* Calculate totals for this specific activity */}
-                {(() => {
-                  const activityTotalBudget = calculateActivityTotalBudget(selectedActivityForSubActivities);
-                  const fundingBreakdown = calculateActivityFundingBreakdown(selectedActivityForSubActivities);
-                  const activityTotalFunding = calculateActivityTotalFunding(selectedActivityForSubActivities);
-                  const activityFundingGap = Math.max(0, activityTotalBudget - activityTotalFunding);
-                  
-                  return (
-                    <div className="space-y-4">
-                      {/* Main Summary */}
-                      <div className="grid grid-cols-3 gap-4 text-center">
-                        <div className="bg-blue-50 p-3 rounded-lg">
-                          <div className="text-lg font-bold text-blue-600">
-                            ${activityTotalBudget.toLocaleString()}
-                          </div>
-                          <div className="text-xs text-gray-500">Total Budget</div>
-                        </div>
-                        <div className="bg-green-50 p-3 rounded-lg">
-                          <div className="text-lg font-bold text-green-600">
-                            ${fundingBreakdown.total.toLocaleString()}
-                          </div>
-                          <div className="text-xs text-gray-500">Total Funding</div>
-                        </div>
-                        <div className={`p-3 rounded-lg ${activityFundingGap > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
-                          <div className={`text-lg font-bold ${activityFundingGap > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            ${activityFundingGap.toLocaleString()}
-                          </div>
-                          <div className="text-xs text-gray-500">Funding Gap</div>
+                {/* Budget Information */}
+                <div className="space-y-4">
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <h4 className="text-sm font-medium text-blue-700 mb-3 flex items-center">
+                      <DollarSign className="h-4 w-4 mr-2" />
+                      Activity Budget Summary
+                    </h4>
+                    
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-blue-600">Total Budget:</span>
+                        <div className="font-bold text-blue-800 text-lg">
+                          ${modalBudgetRequired.toLocaleString()}
                         </div>
                       </div>
-                      
-                      {/* Detailed Funding Breakdown */}
-                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                        <h5 className="text-sm font-medium text-gray-700 mb-3">Funding Sources Breakdown</h5>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          <div className="text-center">
-                            <div className="text-sm font-medium text-blue-600">
-                              ${fundingBreakdown.government.toLocaleString()}
-                            </div>
-                            <div className="text-xs text-gray-500">Government</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-sm font-medium text-purple-600">
-                              ${fundingBreakdown.partners.toLocaleString()}
-                            </div>
-                            <div className="text-xs text-gray-500">Partners</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-sm font-medium text-green-600">
-                              ${fundingBreakdown.sdg.toLocaleString()}
-                            </div>
-                            <div className="text-xs text-gray-500">SDG</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-sm font-medium text-orange-600">
-                              ${fundingBreakdown.other.toLocaleString()}
-                            </div>
-                            <div className="text-xs text-gray-500">Other</div>
-                          </div>
+                      <div>
+                        <span className="text-blue-600">Available Funding:</span>
+                        <div className="font-bold text-green-600 text-lg">
+                          ${modalTotalAvailable.toLocaleString()}
                         </div>
                       </div>
                     </div>
-                  );
-                })()}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+                    
+                    <div className="mt-4 pt-3 border-t border-blue-200">
+                      <h5 className="text-xs font-medium text-blue-700 mb-2">Funding Sources:</h5>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-blue-600">Government:</span>
+                          <span className="font-medium">${modalGovernment.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-blue-600">Partners:</span>
+                          <span className="font-medium">${modalPartners.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-blue-600">SDG:</span>
+                          <span className="font-medium">${modalSdg.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-blue-600">Other:</span>
+                          <span className="font-medium">${modalOther.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-3 pt-3 border-t border-blue-200">
+                      {modalGap > 0 ? (
+                        <div className="flex justify-between items-center">
+                          <span className="text-red-600 font-medium">Funding Gap:</span>
+                          <span className="font-bold text-red-600 text-lg">${modalGap.toLocaleString()}</span>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between items-center">
+                          <span className="text-green-600 font-medium">Status:</span>
+                          <span className="font-bold text-green-600">Fully Funded</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-      {/* Costing Tool Modal */}
-      {showCostingTool && selectedActivityType && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[95vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-200 z-10">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-medium text-gray-900">
-                  {selectedActivityType} Costing Tool
-                </h3>
-                <button
-                  onClick={() => {
-                    setShowCostingTool(false);
-                    setSelectedActivityType(null);
-                  }}
-                  className="text-gray-400 hover:text-gray-500"
-                >
-                  <span className="sr-only">Close</span>
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                  {/* Sub-Activities Management */}
+                  {!isViewOnly && (
+                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                      <h4 className="text-sm font-medium text-gray-700 mb-3">Add Sub-Activity</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        {(['Training', 'Meeting', 'Workshop', 'Supervision', 'Procurement', 'Printing', 'Other'] as ActivityType[]).map((type) => (
+                          <button
+                            key={type}
+                            onClick={() => handleCreateSubActivity(type)}
+                            className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 flex items-center justify-center transition-colors"
+                          >
+                            <Plus className="h-4 w-4 mr-1" />
+                            {type}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-Activities List */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-gray-700">Sub-Activities ({selectedActivity.sub_activities?.length || 0})</h4>
+                    
+                    {(!selectedActivity.sub_activities || selectedActivity.sub_activities.length === 0) ? (
+                      <div className="text-center p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                        <Activity className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-500 text-sm">No sub-activities created yet</p>
+                        <p className="text-xs text-gray-400 mt-1">Create sub-activities to break down this main activity</p>
+                      </div>
+                    ) : (
+                      selectedActivity.sub_activities.map((subActivity: any) => {
+                        // Calculate sub-activity budget details
+                        const subBudgetRequired = subActivity.budget_calculation_type === 'WITH_TOOL'
+                          ? Number(subActivity.estimated_cost_with_tool || 0)
+                          : Number(subActivity.estimated_cost_without_tool || 0);
+                        
+                        const subGovernment = Number(subActivity.government_treasury || 0);
+                        const subPartners = Number(subActivity.partners_funding || 0);
+                        const subSdg = Number(subActivity.sdg_funding || 0);
+                        const subOther = Number(subActivity.other_funding || 0);
+                        const subTotalFunding = subGovernment + subPartners + subSdg + subOther;
+                        const subGap = Math.max(0, subBudgetRequired - subTotalFunding);
+                        
+                        return (
+                          <div key={subActivity.id} className="bg-white p-4 rounded-lg border border-gray-200">
+                            <div className="flex justify-between items-start mb-3">
+                              <div>
+                                <div className="flex items-center mb-2">
+                                  <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800 mr-2">
+                                    {subActivity.activity_type}
+                                  </span>
+                                  <h5 className="font-medium text-gray-900">{subActivity.name}</h5>
+                                </div>
+                                {subActivity.description && (
+                                  <p className="text-sm text-gray-600">{subActivity.description}</p>
+                                )}
+                              </div>
+                              
+                              {!isViewOnly && (
+                                <div className="flex space-x-2">
+                                  <button
+                                    onClick={() => handleDeleteSubActivity(subActivity.id)}
+                                    className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-200">
+                              <div>
+                                <div className="text-xs text-gray-500 mb-1">Budget Required</div>
+                                <div className="font-semibold text-gray-900">${subBudgetRequired.toLocaleString()}</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-500 mb-1">Available Funding</div>
+                                <div className="font-semibold text-green-600">${subTotalFunding.toLocaleString()}</div>
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-4 gap-2 mt-2 text-xs">
+                              <div className="text-center">
+                                <div className="text-gray-500">Gov</div>
+                                <div className="font-medium">${subGovernment.toLocaleString()}</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-gray-500">Partners</div>
+                                <div className="font-medium">${subPartners.toLocaleString()}</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-gray-500">SDG</div>
+                                <div className="font-medium">${subSdg.toLocaleString()}</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-gray-500">Other</div>
+                                <div className="font-medium">${subOther.toLocaleString()}</div>
+                              </div>
+                            </div>
+                            
+                            {subGap > 0 && (
+                              <div className="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded">
+                                Gap: ${subGap.toLocaleString()}
+                              </div>
+                            )}
+                            
+                            <div className="flex justify-end space-x-2 mt-3">
+                              <button
+                                onClick={() => {
+                                  setSelectedSubActivity(subActivity);
+                                  setSelectedActivityType(subActivity.activity_type);
+                                  setShowBudgetForm(true);
+                                }}
+                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center px-2 py-1 bg-blue-50 rounded"
+                              >
+                                <Edit className="h-3 w-3 mr-1" />
+                                Edit Budget
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="p-6">
-              {renderCostingTool()}
             </div>
           </div>
         </div>
       )}
 
       {/* Budget Form Modal */}
-      {showBudgetForm && calculatedCostData && selectedActivityType && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[95vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-200 z-10">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-medium text-gray-900">
-                  {currentSubActivity ? 'Edit' : 'Add'} Budget Sources for {selectedActivityType}
-                </h3>
-                <button
-                  onClick={() => {
-                    setShowBudgetForm(false);
-                    setCalculatedCostData(null);
-                    setCurrentSubActivity(null);
-                  }}
-                  className="text-gray-400 hover:text-gray-500"
-                >
-                  <span className="sr-only">Close</span>
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div className="p-6">
-              <ActivityBudgetForm
-                activity={selectedActivityForSubActivities!}
-                budgetCalculationType={calculatedCostData.budget_calculation_type || 'WITH_TOOL'}
-                activityType={selectedActivityType}
-                onSubmit={handleBudgetSubmit}
-                initialData={calculatedCostData}
-                onCancel={() => {
-                  setShowBudgetForm(false);
-                  setCalculatedCostData(null);
-                  setCurrentSubActivity(null);
-                }}
-                isSubmitting={createBudgetMutation.isPending || createSubActivityMutation.isPending}
-              />
-            </div>
+      {showBudgetForm && selectedActivityType && selectedActivity && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <ActivityBudgetForm
+              activity={selectedActivity}
+              budgetCalculationType="WITH_TOOL"
+              activityType={selectedActivityType}
+              onSubmit={handleSubActivitySaved}
+              onCancel={() => {
+                setShowBudgetForm(false);
+                setSelectedActivityType(null);
+              }}
+            />
           </div>
         </div>
       )}

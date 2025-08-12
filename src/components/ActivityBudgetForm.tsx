@@ -201,7 +201,7 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
 
       // Validate estimated cost
       if (estimatedCost <= 0) {
-        setError(`Estimated cost must be greater than 0. Current: ${estimatedCost}`);
+        setError(`Estimated cost must be greater than 0. Please use the costing tool or enter a valid amount.`);
         setIsBudgetSubmitting(false);
         return;
       }
@@ -236,16 +236,20 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
         name: data.name || `${activityType} Activity`,
         activity_type: activityType || 'Other',
         description: data.description || '',
+        
+        // Budget calculation details
         budget_calculation_type: budgetCalculationType,
-        estimated_cost_with_tool: budgetCalculationType === 'WITH_TOOL' ? estimatedCost : 0,
-        estimated_cost_without_tool: budgetCalculationType === 'WITHOUT_TOOL' ? estimatedCost : 0,
+        estimated_cost_with_tool: Number(budgetCalculationType === 'WITH_TOOL' ? estimatedCost : 0),
+        estimated_cost_without_tool: Number(budgetCalculationType === 'WITHOUT_TOOL' ? estimatedCost : 0),
+        
+        // Funding sources
         government_treasury: Number(data.government_treasury),
         sdg_funding: Number(data.sdg_funding),
-        partners_funding: calculatedPartnersFunding,
+        partners_funding: Number(calculatedPartnersFunding),
         other_funding: Number(data.other_funding),
         
         // Store tool-specific details and partners list
-        partners_details: { partners_list: partners.filter(p => p.name && p.amount > 0) },
+        partners_details: partners.length > 0 ? { partners_list: partners.filter(p => p.name && p.amount > 0) } : null,
         training_details: data.training_details || initialData?.training_details,
         meeting_workshop_details: data.meeting_workshop_details || initialData?.meeting_workshop_details,
         procurement_details: data.procurement_details || initialData?.procurement_details,
@@ -253,10 +257,21 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
         supervision_details: data.supervision_details || initialData?.supervision_details
       };
 
-      console.log("Submitting SubActivity data:", budgetData);
+      console.log("Submitting SubActivity data with budget fields:", {
+        name: budgetData.name,
+        activity_type: budgetData.activity_type,
+        estimated_cost_with_tool: budgetData.estimated_cost_with_tool,
+        estimated_cost_without_tool: budgetData.estimated_cost_without_tool,
+        government_treasury: budgetData.government_treasury,
+        partners_funding: budgetData.partners_funding,
+        sdg_funding: budgetData.sdg_funding,
+        other_funding: budgetData.other_funding
+      });
 
       // Submit budget data to parent component for saving
       await onSubmit(budgetData);
+      
+      console.log('Sub-activity with budget saved successfully');
     } catch (error: any) {
       console.error('Error submitting budget form:', error);
       setError(error.message || 'Failed to save budget');
@@ -424,10 +439,10 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
               />
             </div>
           </div>
-
+                ${estimatedCost.toLocaleString()}
               <p className="mt-2 text-sm text-gray-500">
                 <Info className="h-4 w-4 mr-1 inline align-text-bottom" />
-                Indicate the amount of funding from each source
+                Total estimated cost for this sub-activity
               </p>
 
               {/* Partners funding section */}
@@ -548,11 +563,7 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
       {/* Budget Summary */}
       <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
         <h3 className="text-sm font-medium text-gray-700 mb-4">Budget Summary</h3>
-        <p className="text-xs text-gray-500 mb-2">
-          Required: ${estimatedCost.toLocaleString()} | 
-          Available: ${totalFunding.toLocaleString()} | 
-          Gap: ${fundingGap > 0 ? fundingGap.toLocaleString() : 0} 
-          {fundingGap <= 0 && '(Fully Funded)'}
+          This total will be used as the budget requirement for the sub-activity
         </p>
 
         <div className="flex items-center justify-between mb-4">
@@ -570,13 +581,14 @@ const ActivityBudgetForm: React.FC<ActivityBudgetFormProps> = ({
         {/* Debug Information - for troubleshooting only */}
         <div className="mb-4 text-xs text-gray-400 bg-gray-100 p-2 rounded">
           <div>Internal Values (Debug):</div>
-          <div>with_tool: {withToolCost}</div>
-          <div>without_tool: {withoutToolCost}</div>
+          <div>budget_calculation_type: {budgetCalculationType}</div>
+          <div>activity_type: {activityType}</div>
+          <div>estimated_cost_with_tool: {initialData?.estimated_cost_with_tool || 0}</div>
+          <div>estimated_cost_without_tool: {initialData?.estimated_cost_without_tool || 0}</div>
           <div>initial_with_tool: {initialData?.estimated_cost_with_tool || 'N/A'}</div> 
           <div>initial_totalBudget: {initialData?.totalBudget || initialData?.training_details?.totalBudget || 'N/A'}</div>
           <div>training_details_totalBudget: {initialData?.training_details?.totalBudget || 'N/A'}</div>
-          <div>calculation_type: {budgetCalculationType}</div>
-          <div>effective: {estimatedCost}</div>
+          <div>effective_estimated_cost: {estimatedCost}</div>
         </div>
 
         <div className="space-y-2">
