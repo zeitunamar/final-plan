@@ -990,6 +990,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                 {(() => {
                   const activityTotalBudget = calculateActivityTotalBudget(selectedActivityForSubActivities);
                   const fundingBreakdown = calculateActivityFundingBreakdown(selectedActivityForSubActivities);
+                  const activityTotalFunding = calculateActivityTotalFunding(selectedActivityForSubActivities);
                   const activityFundingGap = Math.max(0, activityTotalBudget - activityTotalFunding);
                   
                   return (
@@ -1046,7 +1047,6 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                           </div>
                         </div>
                       </div>
-                    </div>
                     </div>
                   );
                 })()}
