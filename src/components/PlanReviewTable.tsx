@@ -333,23 +333,15 @@ const PlanSummary: React.FC = () => {
     
     if (!objectives || !Array.isArray(objectives)) {
       console.warn('No objectives to export');
-    if (Object.keys(organizationsMap).length === 0) {
-      fetchOrganizations();
+      return exportData;
     }
-  }, [organizationsMap]);
 
     const userOrgId = userOrganizations?.[0] || null;
     console.log('Converting plan data for export - user org:', userOrgId);
     console.log('Objectives to convert:', objectives.length);
     
-    if (!objectives || !Array.isArray(objectives) || objectives.length === 0) {
-      return tableRows;
-    }
-
     objectives.forEach((objective, objIndex) => {
       if (!objective || !objective.id) return;
-      
-      if (!objective) return;
       
       // Get objective weight directly from database (effective_weight, planner_weight, or weight)
       const objectiveWeight = objective.effective_weight || objective.planner_weight || objective.weight;
@@ -389,13 +381,11 @@ const PlanSummary: React.FC = () => {
           !initiative.organization || 
           initiative.organization === userOrgId
         );
-        if (!initiative || !initiative.id) return;
-        
         
         console.log(`Objective ${objective.title}: ${objective.initiatives.length} total initiatives, ${userInitiatives.length} for user org`);
         
         userInitiatives.forEach((initiative: any) => {
-          if (!initiative) return;
+          if (!initiative || !initiative.id) return;
           
           // Filter performance measures and main activities by organization
           const performanceMeasures = (initiative.performance_measures || []).filter(measure =>
@@ -556,51 +546,13 @@ const PlanSummary: React.FC = () => {
 
   const handleRefresh = async () => {
     setLoadingError(null);
-  if (!processedObjectives || !Array.isArray(processedObjectives) || processedObjectives.length === 0) {
-    return (
-      <div className="space-y-6">
-        {/* Plan Header */}
-        <div className="bg-gradient-to-r from-green-50 to-blue-50 p-6 rounded-lg border border-gray-200">
-          <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
-            <Building2 className="h-6 w-6 mr-2 text-green-600" />
-            {organizationName || 'Organization Name'} - Strategic Plan
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <span className="text-gray-500">Planner:</span>
-              <div className="font-medium">{plannerName || 'Not specified'}</div>
-            </div>
-            <div>
-              <span className="text-gray-500">Plan Type:</span>
-              <div className="font-medium">{planType || 'Not specified'}</div>
-            </div>
-            <div>
-              <span className="text-gray-500">From:</span>
-              <div className="font-medium">{formatDate(fromDate)}</div>
-            </div>
-            <div>
-              <span className="text-gray-500">To:</span>
-              <div className="font-medium">{formatDate(toDate)}</div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="text-center p-8 bg-gray-50 rounded-lg border border-gray-200">
-          <p className="text-gray-500">No objectives data available for this plan.</p>
-        </div>
-      </div>
-    );
-  }
-
     setRetryCount(prev => prev + 1);
-    if (!objective || !objective.id) return;
-    
     try {
       await auth.getCurrentUser();
       await refetch();
     } catch (error) {
       console.error("Refresh failed:", error);
-        no: (objIndex + 1).toString(),
+    }
   };
 
   const handleApprove = async () => {
@@ -626,8 +578,7 @@ const PlanSummary: React.FC = () => {
   };
 
   const handleExportExcel = () => {
-        gap: 0,
-        uniqueKey: `objective-${objective.id}-${objIndex}`
+    if (!processedPlanData?.objectives) {
       console.error('No objectives data available for export');
       return;
     }
@@ -654,7 +605,7 @@ const PlanSummary: React.FC = () => {
         const filteredInitiatives = userInitiatives.map(initiative => {
           const filteredMeasures = (initiative.performance_measures || []).filter(measure => {
             return measure.organization === plannerOrgId || !measure.organization;
-        ].filter(item => item && item.id); // Filter out invalid items
+          });
           
           const filteredActivities = (initiative.main_activities || []).filter(activity => {
             return activity.organization === plannerOrgId || !activity.organization;
@@ -706,12 +657,9 @@ const PlanSummary: React.FC = () => {
       const userInitiatives = objective.initiatives.filter(initiative => {
         const isDefault = initiative.is_default === true;
         const belongsToUserOrg = initiative.organization === plannerOrgId;
-      if (!initiative || !initiative.id) return;
-      
         return isDefault || belongsToUserOrg;
       });
       
-      ].filter(item => item && item.id); // Filter out invalid items
       const filteredInitiatives = userInitiatives.map(initiative => {
         const filteredMeasures = (initiative.performance_measures || []).filter(measure => {
           return measure.organization === plannerOrgId || !measure.organization;
@@ -742,8 +690,7 @@ const PlanSummary: React.FC = () => {
       'en',
       {
         organization: organizationName,
-          gap: 0,
-          uniqueKey: `initiative-${objective.id}-${initiative.id}-${initIndex}`
+        planner: processedPlanData.planner_name || 'N/A',
         fromDate: processedPlanData.from_date || 'N/A',
         toDate: processedPlanData.to_date || 'N/A',
         planType: processedPlanData.type || 'N/A'
@@ -757,13 +704,9 @@ const PlanSummary: React.FC = () => {
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader className="h-6 w-6 animate-spin mr-2 text-green-600" />
         <span className="text-lg">Loading plan details...</span>
-        if (!item || !item.id) return;
-        
       </div>
     );
-        allItems.forEach((item, itemIndex) => {
-          if (!item || !item.id) return;
-          
+  }
 
   if (error || loadingError) {
     const errorMessage = loadingError || (error instanceof Error ? error.message : "An unknown error occurred");
@@ -772,15 +715,11 @@ const PlanSummary: React.FC = () => {
       <div className="p-8 bg-red-50 border border-red-200 rounded-lg text-center">
         <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
         <h3 className="text-lg font-medium text-red-800">Failed to load plan</h3>
-              if (!subActivity) return;
-              
         <p className="text-red-600 mt-2">{errorMessage}</p>
         <div className="mt-6 flex justify-center space-x-4">
           <button
             onClick={handleRetry}
             className="px-4 py-2 bg-white border border-red-300 rounded-md text-red-700 hover:bg-red-50"
-                if (!subActivity) return;
-                
           >
             Try Again
           </button>
@@ -859,9 +798,7 @@ const PlanSummary: React.FC = () => {
           performance_measures: filteredMeasures,
           main_activities: filteredActivities
         };
-            'uniqueKey': `${objective.id}-${initiative.id}-${item.id}-${itemIndex}`
-          gap,
-          uniqueKey: `${objective.id}-${initiative.id}-${item.id}-${itemIndex}`
+      });
       
       return {
         ...objective,
@@ -982,7 +919,7 @@ const PlanSummary: React.FC = () => {
                   <p className="text-sm text-gray-500">Organization Name</p>
                   <p className="font-medium">{organizationName}</p>
                 </div>
-                <tr key={row.uniqueKey || `table-row-${index}`} className="hover:bg-gray-50">
+              </div>
               <div className="flex items-start">
                 <User className="h-5 w-5 text-gray-400 mt-0.5 mr-2" />
                 <div>
@@ -1038,7 +975,7 @@ const PlanSummary: React.FC = () => {
                     {filteredPlanData.reviews[0]?.feedback && (
                       <p className="mt-1 text-gray-600">
                         {filteredPlanData.reviews[0].feedback}
-              <tr key={row.uniqueKey || `row-${index}`} className="hover:bg-gray-50">
+                      </p>
                     )}
                     {filteredPlanData.reviews[0]?.reviewed_at && (
                       <p className="mt-2 text-sm text-gray-500">
