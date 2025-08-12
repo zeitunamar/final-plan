@@ -383,7 +383,6 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
       case 'Supervision':
         return <SupervisionCostingTool {...commonProps} />;
       default:
-        // For "Other" activity type, skip costing tool and go directly to budget form
         // For 'Other' type, go directly to budget form with manual entry
         setShowCostingTool(false);
         setShowBudgetForm(true);
