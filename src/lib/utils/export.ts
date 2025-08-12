@@ -235,28 +235,21 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
 
   // Helper function to get months for a quarter
   const getMonthsForQuarter = (selectedMonths: string[], selectedQuarters: string[], quarter: string): string => {
-    if (selectedQuarters.includes(quarter)) {
-      const quarterMonths = {
-        'Q1': ['January', 'February', 'March'],
-        'Q2': ['April', 'May', 'June'],
-        'Q3': ['July', 'August', 'September'],
-        'Q4': ['October', 'November', 'December']
-      };
-      return quarterMonths[quarter as keyof typeof quarterMonths].join(', ');
-    }
-    
-    const quarterMonths = {
+    const quarterMonths: Record<string, string[]> = {
       'Q1': ['January', 'February', 'March'],
       'Q2': ['April', 'May', 'June'],
       'Q3': ['July', 'August', 'September'],
       'Q4': ['October', 'November', 'December']
     };
+
+    if (selectedQuarters.includes(quarter)) {
+      return quarterMonths[quarter].join(', ');
+    }
+
+    const monthsInQuarter = quarterMonths[quarter];
+    const selectedInQuarter = selectedMonths.filter(month => monthsInQuarter.includes(month));
     
-    const relevantMonths = selectedMonths.filter(month => 
-      quarterMonths[quarter as keyof typeof quarterMonths].includes(month)
-    );
-    
-    return relevantMonths.join(', ') || '';
+    return selectedInQuarter.length > 0 ? selectedInQuarter.join(', ') : '';
   };
 
   // Show loading if no organization context
