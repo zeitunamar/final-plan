@@ -250,8 +250,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
           let partners = 0;
           let sdg = 0;
           let other = 0;
-          let totalAvailable = 0;
-          let gap = 0;
 
           if (item.type === 'Main Activity') {
             // Calculate budget from sub-activities if they exist
@@ -277,11 +275,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                 government += subGov;
                 partners += subPartners;
                 sdg += subSdg;
-                other += subOther;
-              });
-              
-              totalAvailable = government + partners + sdg + other;
-              gap = Math.max(0, budgetRequired - totalAvailable);
             } else if (item.budget) {
               // Use legacy budget if no sub-activities
               budgetRequired = item.budget.budget_calculation_type === 'WITH_TOOL' 
@@ -292,10 +285,14 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
               partners = Number(item.budget.partners_funding || 0);
               sdg = Number(item.budget.sdg_funding || 0);
               other = Number(item.budget.other_funding || 0);
-              totalAvailable = government + partners + sdg + other;
-              gap = Math.max(0, budgetRequired - totalAvailable);
             }
           }
+          
+          // Calculate totals after all sub-activities are processed
+          const totalAvailable = government + partners + sdg + other;
+          const gap = Math.max(0, budgetRequired - totalAvailable);
+          
+          console.log(`Main activity "${item.name}" totals: budget=${budgetRequired}, available=${totalAvailable}, gap=${gap}`);
 
           // Calculate 6-month target
           const sixMonthTarget = item.target_type === 'cumulative' 
