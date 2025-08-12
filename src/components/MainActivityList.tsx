@@ -55,6 +55,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
   const [showBudgetForm, setShowBudgetForm] = useState(false);
   const [costingToolData, setCostingToolData] = useState<any>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [editingSubActivity, setEditingSubActivity] = useState<any>(null);
 
   // Fetch current user role and organization
   const { data: currentUser } = useQuery({
@@ -87,6 +88,15 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
     mutationFn: (activityId: string) => mainActivities.delete(activityId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['main-activities', initiativeId, planKey] });
+    }
+  });
+
+  // Delete sub-activity mutation
+  const deleteSubActivityMutation = useMutation({
+    mutationFn: (subActivityId: string) => subActivities.delete(subActivityId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['main-activities', initiativeId, planKey] });
+      forceRefresh();
     }
   });
 
@@ -223,6 +233,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
     setShowBudgetForm(false);
     setSelectedSubActivity(null);
     setCostingToolData(null);
+    setEditingSubActivity(null);
   };
 
   const handleCreateSubActivity = (activityType: ActivityType, activity: any) => {
@@ -231,6 +242,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
     setSelectedActivityType(activityType);
     setShowCostingTool(true); // Show costing tool first
     setShowBudgetForm(false);
+    setEditingSubActivity(null);
   };
 
   const handleCostingComplete = (costingData: any) => {
@@ -244,6 +256,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
     setShowCostingTool(false);
     setSelectedActivityType(null);
     setCostingToolData(null);
+    setEditingSubActivity(null);
   };
 
   const handleSubActivitySaved = async (subActivityData: any) => {
@@ -262,6 +275,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
       setShowBudgetForm(false);
       setSelectedActivityType(null);
       setCostingToolData(null);
+      setEditingSubActivity(null);
       
       // Close modal and reopen with fresh data
       setTimeout(() => {
@@ -276,6 +290,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
         });
       }, 500);
     } catch (error) {
+      console.error('Failed to save sub-activity:', error);
       // Wait a moment for data to be saved, then refresh modal
       setTimeout(async () => {
         try {
@@ -289,25 +304,34 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
         } catch (error) {
           console.error('Error refreshing modal data:', error);
         }
-      
-      // Refresh modal data
-      setTimeout(() => {
-      // Wait for deletion to complete, then refresh modal
-      setTimeout(async () => {
-        try {
-          const refreshedData = await refetch();
-          const updatedActivity = refreshedData.data?.data?.find(act => act.id === selectedActivity.id);
-          
-          if (updatedActivity) {
-            setSelectedActivity(updatedActivity);
-          }
-        } catch (error) {
-          console.error('Error refreshing after deletion:', error);
-        }
       }, 500);
-      }, 500);
-    } catch (error) {
-      console.error('Failed to delete sub-activity:', error);
+    }
+  };
+
+  const handleDeleteSubActivity = async (subActivityId: string) => {
+    if (window.confirm('Are you sure you want to delete this sub-activity? This action cannot be undone.')) {
+      try {
+        await deleteSubActivityMutation.mutateAsync(subActivityId);
+        
+        // Refresh modal data
+        setTimeout(() => {
+          // Wait for deletion to complete, then refresh modal
+          setTimeout(async () => {
+            try {
+              const refreshedData = await refetch();
+              const updatedActivity = refreshedData.data?.data?.find(act => act.id === selectedActivity.id);
+              
+              if (updatedActivity) {
+                setSelectedActivity(updatedActivity);
+              }
+            } catch (error) {
+              console.error('Error refreshing after deletion:', error);
+            }
+          }, 500);
+        }, 500);
+      } catch (error) {
+        console.error('Failed to delete sub-activity:', error);
+      }
     }
   };
 
@@ -921,6 +945,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                                 onClick={() => {
                                   setSelectedSubActivity(subActivity);
                                   setSelectedActivityType(subActivity.activity_type);
+                                  setEditingSubActivity(subActivity);
                                   setShowBudgetForm(true);
                                 }}
                                 className="text-xs text-blue-600 hover:text-blue-800 flex items-center px-2 py-1 bg-blue-50 rounded"
@@ -957,42 +982,48 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                   onCalculate={handleCostingComplete}
                   onCancel={handleCostingCancel}
                   initialData={editingSubActivity && costingToolData ? costingToolData : undefined}
+                />
               )}
               {selectedActivityType === 'Meeting' && (
                 <MeetingWorkshopCostingTool
                   onCalculate={handleCostingComplete}
                   onCancel={handleCostingCancel}
                   initialData={editingSubActivity && costingToolData ? costingToolData : undefined}
+                />
               )}
               {selectedActivityType === 'Workshop' && (
                 <MeetingWorkshopCostingTool
                   onCalculate={handleCostingComplete}
                   onCancel={handleCostingCancel}
                   initialData={editingSubActivity && costingToolData ? costingToolData : undefined}
+                />
               )}
               {selectedActivityType === 'Printing' && (
                 <PrintingCostingTool
                   onCalculate={handleCostingComplete}
                   onCancel={handleCostingCancel}
                   initialData={editingSubActivity && costingToolData ? costingToolData : undefined}
+                />
               )}
               {selectedActivityType === 'Procurement' && (
                 <ProcurementCostingTool
                   onCalculate={handleCostingComplete}
                   onCancel={handleCostingCancel}
                   initialData={editingSubActivity && costingToolData ? costingToolData : undefined}
+                />
               )}
               {selectedActivityType === 'Supervision' && (
                 <SupervisionCostingTool
                   onCalculate={handleCostingComplete}
                   onCancel={handleCostingCancel}
+                  initialData={editingSubActivity && costingToolData ? costingToolData : undefined}
                 />
               )}
               {selectedActivityType === 'Other' && (
                 <div className="text-center p-8">
                   <Info className="h-12 w-12 text-blue-500 mx-auto mb-4" />
                   <h4 className="text-lg font-medium text-gray-900 mb-2">Manual Cost Entry</h4>
-                  initialData={editingSubActivity && costingToolData ? costingToolData : undefined}
+                  <p className="text-gray-600 mb-4">For other activity types, you can enter costs manually in the budget form.</p>
                   <button
                     onClick={() => handleCostingComplete({ totalBudget: 0, estimated_cost: 0 })}
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
@@ -1024,6 +1055,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                   setShowBudgetForm(false);
                   setSelectedActivityType(null);
                   setCostingToolData(null);
+                  setEditingSubActivity(null);
                 }}
               />
             </div>
