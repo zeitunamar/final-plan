@@ -278,18 +278,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                 partners += subPartners;
                 sdg += subSdg;
                 other += subOther;
-                
-                budgetRequired += subBudgetRequired;
-                government += subGov;
-                partners += subPartners;
-                sdg += subSdg;
-                other += subOther;
-                
-                budgetRequired += subBudgetRequired;
-                government += subGov;
-                partners += subPartners;
-                sdg += subSdg;
-                other += subOther;
               });
               
               totalAvailable = government + partners + sdg + other;
@@ -411,8 +399,13 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
                 activityPartners += Number(subActivity.partners_funding || 0);
                 activitySdg += Number(subActivity.sdg_funding || 0);
                 activityOther += Number(subActivity.other_funding || 0);
+              });
+            } else if (activity.budget) {
+              // Use legacy budget if no sub-activities
               activityBudgetRequired = activity.budget.budget_calculation_type === 'WITH_TOOL' 
                 ? Number(activity.budget.estimated_cost_with_tool || 0)
+                : Number(activity.budget.estimated_cost_without_tool || 0);
+              
               activityGovernment = Number(activity.budget.government_treasury || 0);
               activityPartners = Number(activity.budget.partners_funding || 0);
               activitySdg = Number(activity.budget.sdg_funding || 0);
