@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import { MONTHS } from '../../types/plan';
 
 // Helper function to get selected months for a specific quarter
@@ -251,7 +251,7 @@ export const exportToPDF = (
   ]);
   
   // Generate table
-  (doc as any).autoTable({
+  autoTable(doc, {
     head: [headers],
     body: tableData,
     startY: yPosition,
