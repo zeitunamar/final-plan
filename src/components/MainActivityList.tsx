@@ -309,6 +309,8 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
     return total;
   };
 
+  // Calculate funding breakdown for activity
+  const calculateActivityFundingBreakdown = (activity: MainActivity) => {
     console.log('Calculating totals for activity:', activity.name);
     console.log('Sub-activities count:', activity.sub_activities?.length || 0);
     console.log('Legacy budget:', activity.budget ? 'exists' : 'none');
@@ -326,6 +328,11 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
       partners += Number(activity.budget.partners_funding || 0);
       sdg += Number(activity.budget.sdg_funding || 0);
       other += Number(activity.budget.other_funding || 0);
+    }
+    
+    // Add sub-activities funding
+    if (activity.sub_activities && activity.sub_activities.length > 0) {
+      activity.sub_activities.forEach(subActivity => {
         // Use direct fields from SubActivity model
         const subBudgetRequired = subActivity.budget_calculation_type === 'WITH_TOOL'
           ? Number(subActivity.estimated_cost_with_tool || 0)
@@ -355,14 +362,6 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
       sdg,
       other,
       total
-      
-      console.log('Using legacy budget:', {
-        budget: totalBudget,
-        government,
-        partners,
-        sdg,
-        other
-      });
     };
   };
 
@@ -415,16 +414,6 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
   };
 
   if (isLoading && initiativeId) {
-    
-    console.log('Final totals:', {
-      totalBudget,
-      totalFunding,
-      government,
-      partners,
-      sdg,
-      other,
-      fundingGap
-    });
     return <div className="text-center p-4">{t('common.loading')}</div>;
   }
 
@@ -612,6 +601,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
           const totalBudget = calculateActivityTotalBudget(activity);
           const totalFunding = calculateActivityTotalFunding(activity);
           const fundingGap = Math.max(0, totalBudget - totalFunding);
+          const activityTotals = calculateActivityFundingBreakdown(activity);
           
           return (
             <div
@@ -621,12 +611,18 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center">
-                  <h4 className="font-medium text-gray-900">{activity.name}</h4>
+                  <h4 className="text-lg font-medium text-gray-900">{activity.name}</h4>
+                  <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    {activity.weight}%
+                  </span>
                 </div>
                 <div className="flex flex-col items-end">
                   <span className="text-sm font-medium text-green-600">
-                    {activity.weight}%
+                    <div className="text-lg font-medium text-green-600">${Number(activityTotals.total || 0).toLocaleString()}</div>
                   </span>
+                  <div className={`text-lg font-medium ${Number(activityTotals.fundingGap || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    ${Math.abs(Number(activityTotals.fundingGap || 0)).toLocaleString()}
+                  </div>
                 </div>
               </div>
               
@@ -641,12 +637,12 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
               
               {/* Enhanced Budget Summary with Sub-Activities */}
               <div className="mt-3 p-3 bg-gray-50 rounded-md border border-gray-200">
-                    <div className="text-lg font-medium text-green-600">${Number(activityTotals.totalFunding || 0).toLocaleString()}</div>
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center">
                     <DollarSign className="h-4 w-4 text-green-600 mr-1" />
                     <span className="text-sm font-medium text-gray-700">Budget Summary</span>
-                    <div className={`text-lg font-medium ${Number(activityTotals.fundingGap || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      ${Math.abs(Number(activityTotals.fundingGap || 0)).toLocaleString()}
+                  </div>
+                  <div className="text-sm font-medium text-green-600">
                     Total: ${totalBudget.toLocaleString()}
                   </div>
                 </div>
