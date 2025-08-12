@@ -309,6 +309,44 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
     return total;
   };
 
+  // Calculate detailed funding breakdown for activity
+  const calculateActivityFundingBreakdown = (activity: MainActivity) => {
+    let government = 0;
+    let partners = 0;
+    let sdg = 0;
+    let other = 0;
+    
+    // Add legacy budget funding if exists
+    if (activity.budget) {
+      government += Number(activity.budget.government_treasury || 0);
+      partners += Number(activity.budget.partners_funding || 0);
+      sdg += Number(activity.budget.sdg_funding || 0);
+      other += Number(activity.budget.other_funding || 0);
+    }
+    
+    // Add sub-activities funding
+    if (activity.sub_activities && activity.sub_activities.length > 0) {
+      activity.sub_activities.forEach(subActivity => {
+        if (subActivity.budget) {
+          government += Number(subActivity.budget.government_treasury || 0);
+          partners += Number(subActivity.budget.partners_funding || 0);
+          sdg += Number(subActivity.budget.sdg_funding || 0);
+          other += Number(subActivity.budget.other_funding || 0);
+        }
+      });
+    }
+    
+    const total = government + partners + sdg + other;
+    
+    return {
+      government,
+      partners, 
+      sdg,
+      other,
+      total
+    };
+  };
+
   // Close all modals
   const closeAllModals = () => {
     setShowSubActivitiesModal(false);
@@ -951,30 +989,65 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                 {/* Calculate totals for this specific activity */}
                 {(() => {
                   const activityTotalBudget = calculateActivityTotalBudget(selectedActivityForSubActivities);
-                  const activityTotalFunding = calculateActivityTotalFunding(selectedActivityForSubActivities);
+                  const fundingBreakdown = calculateActivityFundingBreakdown(selectedActivityForSubActivities);
                   const activityFundingGap = Math.max(0, activityTotalBudget - activityTotalFunding);
                   
                   return (
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div className="bg-blue-50 p-3 rounded-lg">
-                    <div className="text-lg font-bold text-blue-600">
-                      ${activityTotalBudget.toLocaleString()}
+                    <div className="space-y-4">
+                      {/* Main Summary */}
+                      <div className="grid grid-cols-3 gap-4 text-center">
+                        <div className="bg-blue-50 p-3 rounded-lg">
+                          <div className="text-lg font-bold text-blue-600">
+                            ${activityTotalBudget.toLocaleString()}
+                          </div>
+                          <div className="text-xs text-gray-500">Total Budget</div>
+                        </div>
+                        <div className="bg-green-50 p-3 rounded-lg">
+                          <div className="text-lg font-bold text-green-600">
+                            ${fundingBreakdown.total.toLocaleString()}
+                          </div>
+                          <div className="text-xs text-gray-500">Total Funding</div>
+                        </div>
+                        <div className={`p-3 rounded-lg ${activityFundingGap > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
+                          <div className={`text-lg font-bold ${activityFundingGap > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            ${activityFundingGap.toLocaleString()}
+                          </div>
+                          <div className="text-xs text-gray-500">Funding Gap</div>
+                        </div>
+                      </div>
+                      
+                      {/* Detailed Funding Breakdown */}
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <h5 className="text-sm font-medium text-gray-700 mb-3">Funding Sources Breakdown</h5>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="text-center">
+                            <div className="text-sm font-medium text-blue-600">
+                              ${fundingBreakdown.government.toLocaleString()}
+                            </div>
+                            <div className="text-xs text-gray-500">Government</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-sm font-medium text-purple-600">
+                              ${fundingBreakdown.partners.toLocaleString()}
+                            </div>
+                            <div className="text-xs text-gray-500">Partners</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-sm font-medium text-green-600">
+                              ${fundingBreakdown.sdg.toLocaleString()}
+                            </div>
+                            <div className="text-xs text-gray-500">SDG</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-sm font-medium text-orange-600">
+                              ${fundingBreakdown.other.toLocaleString()}
+                            </div>
+                            <div className="text-xs text-gray-500">Other</div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500">Total Budget</div>
-                  </div>
-                  <div className="bg-green-50 p-3 rounded-lg">
-                    <div className="text-lg font-bold text-green-600">
-                      ${activityTotalFunding.toLocaleString()}
                     </div>
-                    <div className="text-xs text-gray-500">Total Funding</div>
-                  </div>
-                  <div className={`p-3 rounded-lg ${activityFundingGap > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
-                    <div className={`text-lg font-bold ${activityFundingGap > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      ${activityFundingGap.toLocaleString()}
-                    </div>
-                    <div className="text-xs text-gray-500">Funding Gap</div>
-                  </div>
-                </div>
                   );
                 })()}
               </div>
