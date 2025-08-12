@@ -389,10 +389,6 @@ const PlanReviewTable: React.FC<PlanReviewTableProps> = ({
         const displayName = item.type === 'Performance Measure' 
           ? `PM: ${item.name}` 
           : `MA: ${item.name}`;
-        // Add prefix based on item type
-        const displayName = item.type === 'Performance Measure' 
-          ? `PM: ${item.name}` 
-          : `MA: ${item.name}`;
 
         tableRows.push({
           no: objectiveAdded ? '' : (objIndex + 1),
