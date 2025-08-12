@@ -76,12 +76,23 @@ class ActivityBudgetSerializer(serializers.ModelSerializer):
         return obj.funding_gap
 
 class SubActivitySerializer(serializers.ModelSerializer):
-    budget = ActivityBudgetSerializer(read_only=True)
     main_activity_name = serializers.CharField(source='main_activity.name', read_only=True)
+    estimated_cost = serializers.SerializerMethodField()
+    total_funding = serializers.SerializerMethodField()
+    funding_gap = serializers.SerializerMethodField()
     
     class Meta:
         model = SubActivity
         fields = '__all__'
+    
+    def get_estimated_cost(self, obj):
+        return obj.estimated_cost
+    
+    def get_total_funding(self, obj):
+        return obj.total_funding
+    
+    def get_funding_gap(self, obj):
+        return obj.funding_gap
 class MainActivitySerializer(serializers.ModelSerializer):
     initiative_name = serializers.CharField(source='initiative.name', read_only=True)
     organization_name = serializers.CharField(source='organization.name', read_only=True)

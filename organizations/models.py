@@ -596,6 +596,11 @@ class SubActivity(models.Model):
         ('Other', 'Other')
     ]
     
+    BUDGET_CALCULATION_TYPES = [
+        ('WITH_TOOL', 'With Tool'),
+        ('WITHOUT_TOOL', 'Without Tool')
+    ]
+    
     main_activity = models.ForeignKey(
         MainActivity,
         on_delete=models.CASCADE,
@@ -608,8 +613,91 @@ class SubActivity(models.Model):
         default='Other'
     )
     description = models.TextField(null=True, blank=True)
+    
+    # Budget fields
+    budget_calculation_type = models.CharField(
+        max_length=20,
+        choices=BUDGET_CALCULATION_TYPES,
+        default='WITHOUT_TOOL'
+    )
+    estimated_cost_with_tool = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
+    )
+    estimated_cost_without_tool = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
+    )
+    government_treasury = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
+    )
+    sdg_funding = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
+    )
+    partners_funding = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
+    )
+    other_funding = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
+    )
+    
+    # Tool-specific details (JSON fields to store costing tool data)
+    training_details = models.JSONField(null=True, blank=True)
+    meeting_workshop_details = models.JSONField(null=True, blank=True)
+    procurement_details = models.JSONField(null=True, blank=True)
+    printing_details = models.JSONField(null=True, blank=True)
+    supervision_details = models.JSONField(null=True, blank=True)
+    partners_details = models.JSONField(null=True, blank=True)
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    @property
+    def estimated_cost(self):
+        """Get the effective estimated cost based on calculation type"""
+        return (
+            self.estimated_cost_with_tool 
+            if self.budget_calculation_type == 'WITH_TOOL'
+            else self.estimated_cost_without_tool
+        )
+    
+    @property
+    def total_funding(self):
+        """Calculate total funding from all sources"""
+        return (
+            self.government_treasury +
+            self.sdg_funding +
+            self.partners_funding +
+            self.other_funding
+        )
+    
+    @property
+    def funding_gap(self):
+        """Calculate funding gap"""
+        return max(0, self.estimated_cost - self.total_funding)
+    
+    def clean(self):
+        super().clean()
+        
+        # Validate that estimated cost is positive
+        if self.estimated_cost <= 0:
+            raise ValidationError('Estimated cost must be greater than 0')
+        
+        # Validate that total funding doesn't exceed estimated cost
+        if self.total_funding > self.estimated_cost:
+            raise ValidationError(
+                f'Total funding ({self.total_funding}) cannot exceed estimated cost ({self.estimated_cost})'
+            )
     
     def __str__(self):
         return f"{self.main_activity.name} - {self.name} ({self.activity_type})"
