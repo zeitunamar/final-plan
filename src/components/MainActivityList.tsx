@@ -309,8 +309,12 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
     return total;
   };
 
-  // Calculate detailed funding breakdown for activity
-  const calculateActivityFundingBreakdown = (activity: MainActivity) => {
+    console.log('Calculating totals for activity:', activity.name);
+    console.log('Sub-activities count:', activity.sub_activities?.length || 0);
+    console.log('Legacy budget:', activity.budget ? 'exists' : 'none');
+    
+    let totalBudget = 0;
+    let totalFunding = 0;
     let government = 0;
     let partners = 0;
     let sdg = 0;
@@ -322,17 +326,24 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
       partners += Number(activity.budget.partners_funding || 0);
       sdg += Number(activity.budget.sdg_funding || 0);
       other += Number(activity.budget.other_funding || 0);
-    }
-    
-    // Add sub-activities funding
-    if (activity.sub_activities && activity.sub_activities.length > 0) {
-      activity.sub_activities.forEach(subActivity => {
-        if (subActivity.budget) {
-          government += Number(subActivity.budget.government_treasury || 0);
-          partners += Number(subActivity.budget.partners_funding || 0);
-          sdg += Number(subActivity.budget.sdg_funding || 0);
-          other += Number(subActivity.budget.other_funding || 0);
-        }
+        // Use direct fields from SubActivity model
+        const subBudgetRequired = subActivity.budget_calculation_type === 'WITH_TOOL'
+          ? Number(subActivity.estimated_cost_with_tool || 0)
+          : Number(subActivity.estimated_cost_without_tool || 0);
+        
+        totalBudget += subBudgetRequired;
+        government += Number(subActivity.government_treasury || 0);
+        partners += Number(subActivity.partners_funding || 0);
+        sdg += Number(subActivity.sdg_funding || 0);
+        other += Number(subActivity.other_funding || 0);
+        
+        console.log(`Sub-activity ${subActivity.name}:`, {
+          budget: subBudgetRequired,
+          government: subActivity.government_treasury,
+          partners: subActivity.partners_funding,
+          sdg: subActivity.sdg_funding,
+          other: subActivity.other_funding
+        });
       });
     }
     
@@ -344,6 +355,14 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
       sdg,
       other,
       total
+      
+      console.log('Using legacy budget:', {
+        budget: totalBudget,
+        government,
+        partners,
+        sdg,
+        other
+      });
     };
   };
 
@@ -396,6 +415,16 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
   };
 
   if (isLoading && initiativeId) {
+    
+    console.log('Final totals:', {
+      totalBudget,
+      totalFunding,
+      government,
+      partners,
+      sdg,
+      other,
+      fundingGap
+    });
     return <div className="text-center p-4">{t('common.loading')}</div>;
   }
 
