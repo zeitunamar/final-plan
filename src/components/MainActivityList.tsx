@@ -181,15 +181,15 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
   };
 
   // Calculate modal budget data
-  const {
-    budgetRequired: modalBudgetRequired,
-    government: modalGovernment,
-    partners: modalPartners,
-    sdg: modalSdg,
-    other: modalOther,
-    totalAvailable: modalTotalAvailable,
-    gap: modalGap
-  } = calculateActivityBudget(selectedActivity);
+  const modalBudgetData = selectedActivity ? calculateActivityBudget(selectedActivity) : {
+    budgetRequired: 0,
+    government: 0,
+    partners: 0,
+    sdg: 0,
+    other: 0,
+    totalAvailable: 0,
+    gap: 0
+  };
   
   // Add effect to refresh modal data when sub-activities change
   useEffect(() => {
@@ -496,9 +496,15 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                     
                     <div className="space-y-1">
                       {activity.sub_activities.slice(0, 3).map((subActivity: any) => {
+                        // Calculate sub-activity budget using new fields
                         const subBudget = subActivity.budget_calculation_type === 'WITH_TOOL'
                           ? Number(subActivity.estimated_cost_with_tool || 0)
                           : Number(subActivity.estimated_cost_without_tool || 0);
+                        
+                        const subTotalFunding = Number(subActivity.government_treasury || 0) +
+                                              Number(subActivity.partners_funding || 0) +
+                                              Number(subActivity.sdg_funding || 0) +
+                                              Number(subActivity.other_funding || 0);
                         
                         return (
                           <div key={subActivity.id} className="flex justify-between items-center text-xs bg-white p-2 rounded border">
@@ -513,6 +519,9 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                             <div className="flex items-center space-x-2">
                               <span className="font-medium text-green-600">
                                 ${subBudget.toLocaleString()}
+                              </span>
+                              <span className="text-blue-600 text-xs">
+                                (F: ${subTotalFunding.toLocaleString()})
                               </span>
                               {isUserPlanner && (
                                 <button
@@ -539,13 +548,13 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                     
                     {/* Summary Stats */}
                     <div className="mt-2 pt-2 border-t border-gray-200 grid grid-cols-2 gap-2 text-xs text-gray-500">
-                      <div>Budget Required: ${budgetRequired.toLocaleString()}</div>
+                        ${modalBudgetData.budgetRequired.toLocaleString()}
                       <div>Funding Available: ${totalAvailable.toLocaleString()}</div>
                       <div className="col-span-2">
                         <span className={`font-medium ${gap > 0 ? 'text-red-600' : 'text-green-600'}`}>
                           Gap: ${gap.toLocaleString()}
                           {gap <= 0 && ' (Fully Funded)'}
-                        </span>
+                        ${modalBudgetData.totalAvailable.toLocaleString()}
                       </div>
                     </div>
                   </div>
@@ -706,28 +715,28 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div className="flex justify-between">
                           <span className="text-blue-600">Government:</span>
-                          <span className="font-medium">${modalGovernment.toLocaleString()}</span>
+                          <span className="font-medium">${modalBudgetData.government.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-blue-600">Partners:</span>
-                          <span className="font-medium">${modalPartners.toLocaleString()}</span>
+                          <span className="font-medium">${modalBudgetData.partners.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-blue-600">SDG:</span>
-                          <span className="font-medium">${modalSdg.toLocaleString()}</span>
+                          <span className="font-medium">${modalBudgetData.sdg.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-blue-600">Other:</span>
-                          <span className="font-medium">${modalOther.toLocaleString()}</span>
+                          <span className="font-medium">${modalBudgetData.other.toLocaleString()}</span>
                         </div>
                       </div>
                     </div>
                     
                     <div className="mt-3 pt-3 border-t border-blue-200">
-                      {modalGap > 0 ? (
+                      {modalBudgetData.gap > 0 ? (
                         <div className="flex justify-between items-center">
                           <span className="text-red-600 font-medium">Funding Gap:</span>
-                          <span className="font-bold text-red-600 text-lg">${modalGap.toLocaleString()}</span>
+                          <span className="font-bold text-red-600 text-lg">${modalBudgetData.gap.toLocaleString()}</span>
                         </div>
                       ) : (
                         <div className="flex justify-between items-center">
@@ -769,11 +778,12 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                       </div>
                     ) : (
                       selectedActivity.sub_activities.map((subActivity: any) => {
-                        // Calculate sub-activity budget details
+                        // Calculate sub-activity budget details using new fields
                         const subBudgetRequired = subActivity.budget_calculation_type === 'WITH_TOOL'
                           ? Number(subActivity.estimated_cost_with_tool || 0)
                           : Number(subActivity.estimated_cost_without_tool || 0);
                         
+                        // Use direct fields from SubActivity model
                         const subGovernment = Number(subActivity.government_treasury || 0);
                         const subPartners = Number(subActivity.partners_funding || 0);
                         const subSdg = Number(subActivity.sdg_funding || 0);
