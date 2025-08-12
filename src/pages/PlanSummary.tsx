@@ -876,6 +876,49 @@ const PlanSummary: React.FC = () => {
           </div>
         </div>
 
+        {/* Move Evaluator Feedback to top - before the table */}
+        {filteredPlanData.reviews?.length > 0 && (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+            <h2 className="text-lg font-medium text-gray-900 mb-4">Evaluator Feedback</h2>
+            <div className={`p-4 rounded-lg ${
+              filteredPlanData.status === 'APPROVED' ? 'bg-green-50 border border-green-200' : 
+              filteredPlanData.status === 'REJECTED' ? 'bg-red-50 border border-red-200' : 
+              'bg-gray-50 border border-gray-200'
+            }`}>
+              <div className="flex items-start">
+                {filteredPlanData.status === 'APPROVED' ? (
+                  <CheckCircle className="h-5 w-5 mr-2 text-green-500 mt-0.5" />
+                ) : filteredPlanData.status === 'REJECTED' ? (
+                  <XCircle className="h-5 w-5 mr-2 text-red-500 mt-0.5" />
+                ) : (
+                  <div className="h-5 w-5 mr-2" />
+                )}
+                <div>
+                  <p className={`font-medium ${
+                    filteredPlanData.status === 'APPROVED' ? 'text-green-700' : 
+                    filteredPlanData.status === 'REJECTED' ? 'text-red-700' : 
+                    'text-gray-700'
+                  }`}>
+                    {filteredPlanData.status === 'APPROVED' ? 'Plan Approved' : 
+                     filteredPlanData.status === 'REJECTED' ? 'Plan Rejected' :
+                     'Pending Review'}
+                  </p>
+                  {filteredPlanData.reviews[0]?.feedback && (
+                    <p className="mt-1 text-gray-600">
+                      {filteredPlanData.reviews[0].feedback}
+                    </p>
+                  )}
+                  {filteredPlanData.reviews[0]?.reviewed_at && (
+                    <p className="mt-2 text-sm text-gray-500">
+                      Reviewed on {formatDate(filteredPlanData.reviews[0].reviewed_at)} by {filteredPlanData.reviews[0].evaluator_name || 'Evaluator'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {filteredPlanData.objectives?.length > 0 && (
           <div className="mb-8">
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -985,25 +1028,25 @@ const PlanSummary: React.FC = () => {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-blue-50 p-4 rounded-lg">
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
               <p className="text-sm text-blue-600">Total Budget Required</p>
               <p className="text-2xl font-bold text-blue-900">
                 ${budgetTotals.total.toLocaleString()}
               </p>
             </div>
-            <div className="bg-green-50 p-4 rounded-lg">
+            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
               <p className="text-sm text-green-600">Government Treasury</p>
               <p className="text-2xl font-bold text-green-900">
                 ${budgetTotals.governmentTotal.toLocaleString()}
               </p>
             </div>
-            <div className="bg-purple-50 p-4 rounded-lg">
+            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
               <p className="text-sm text-purple-600">Partners Funding</p>
               <p className="text-2xl font-bold text-purple-900">
                 ${budgetTotals.partnersTotal.toLocaleString()}
               </p>
             </div>
-            <div className="bg-orange-50 p-4 rounded-lg">
+            <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
               <p className="text-sm text-orange-600">SDG Funding</p>
               <p className="text-2xl font-bold text-orange-900">
                 ${budgetTotals.sdgTotal.toLocaleString()}
