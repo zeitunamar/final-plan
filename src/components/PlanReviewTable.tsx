@@ -4,6 +4,7 @@ import { useLanguage } from '../lib/i18n/LanguageContext';
 import { organizations, auth } from '../lib/api';
 import type { StrategicObjective } from '../types/organization';
 import type { PlanType } from '../types/plan';
+import { MONTHS } from '../types/plan';
 import { exportToExcel, exportToPDF, processDataForExport } from '../lib/utils/export';
 
 interface PlanReviewTableProps {
