@@ -155,29 +155,41 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
         throw new Error('Missing activity or activity type');
       }
 
-      // First create the sub-activity
-      const subActivityData = {
-        main_activity: selectedActivityForSubActivities.id,
-        name: `${selectedActivityType} for ${selectedActivityForSubActivities.name}`,
-        activity_type: selectedActivityType,
-        description: `${selectedActivityType} activity under ${selectedActivityForSubActivities.name}`
-      };
+      if (currentSubActivity) {
+        // Update existing sub-activity budget
+        const finalBudgetData = {
+          ...budgetData,
+          sub_activity: currentSubActivity.id,
+          activity: null,
+          ...calculatedCostData
+        };
+        
+        console.log('Updating existing sub-activity budget:', finalBudgetData);
+        await createBudgetMutation.mutateAsync(finalBudgetData);
+      } else {
+        // Create new sub-activity with budget
+        const subActivityData = {
+          main_activity: selectedActivityForSubActivities.id,
+          name: `${selectedActivityType} for ${selectedActivityForSubActivities.name}`,
+          activity_type: selectedActivityType,
+          description: `${selectedActivityType} activity under ${selectedActivityForSubActivities.name}`
+        };
 
-      console.log('Creating sub-activity:', subActivityData);
-      const createdSubActivity = await createSubActivityMutation.mutateAsync(subActivityData);
-      console.log('Sub-activity created:', createdSubActivity);
+        console.log('Creating new sub-activity:', subActivityData);
+        const createdSubActivity = await createSubActivityMutation.mutateAsync(subActivityData);
+        console.log('Sub-activity created:', createdSubActivity);
 
-      // Then create the budget for the sub-activity
-      const finalBudgetData = {
-        ...budgetData,
-        sub_activity: createdSubActivity.data.id, // Use the created sub-activity ID
-        activity: null, // Don't use legacy activity field
-        ...calculatedCostData // Include costing tool data
-      };
+        // Then create the budget for the sub-activity
+        const finalBudgetData = {
+          ...budgetData,
+          sub_activity: createdSubActivity.data.id,
+          activity: null,
+          ...calculatedCostData
+        };
 
-      console.log('Creating budget:', finalBudgetData);
-      await createBudgetMutation.mutateAsync(finalBudgetData);
-      console.log('Budget created successfully');
+        console.log('Creating budget for new sub-activity:', finalBudgetData);
+        await createBudgetMutation.mutateAsync(finalBudgetData);
+      }
 
       // Reset state and close modals
       setShowBudgetForm(false);
@@ -234,6 +246,7 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
         ? Number(activity.budget.estimated_cost_with_tool || 0)
         : Number(activity.budget.estimated_cost_without_tool || 0);
       total += legacyBudget;
+      console.log(`Legacy budget for ${activity.name}: ${legacyBudget}`);
     }
     
     // Add sub-activities budgets
@@ -244,15 +257,18 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
             ? Number(subActivity.budget.estimated_cost_with_tool || 0)
             : Number(subActivity.budget.estimated_cost_without_tool || 0);
           total += subBudget;
+          console.log(`Sub-activity ${subActivity.name} budget: ${subBudget}`);
         }
       });
     }
     
     // Use total_budget property if available (calculated from backend)
     if (activity.total_budget && activity.total_budget > total) {
-      total = activity.total_budget;
+      total = Number(activity.total_budget);
+      console.log(`Backend total_budget for ${activity.name}: ${total}`);
     }
     
+    console.log(`Final calculated budget for ${activity.name}: ${total}`);
     return total;
   };
 
@@ -266,25 +282,30 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                Number(activity.budget.sdg_funding || 0) +
                Number(activity.budget.partners_funding || 0) +
                Number(activity.budget.other_funding || 0);
+      console.log(`Legacy funding for ${activity.name}: ${total}`);
     }
     
     // Add sub-activities funding
     if (activity.sub_activities && activity.sub_activities.length > 0) {
       activity.sub_activities.forEach(subActivity => {
         if (subActivity.budget) {
-          total += Number(subActivity.budget.government_treasury || 0) +
+          const subFunding = Number(subActivity.budget.government_treasury || 0) +
                    Number(subActivity.budget.sdg_funding || 0) +
                    Number(subActivity.budget.partners_funding || 0) +
                    Number(subActivity.budget.other_funding || 0);
+          total += subFunding;
+          console.log(`Sub-activity ${subActivity.name} funding: ${subFunding}`);
         }
       });
     }
     
     // Use total_funding property if available (calculated from backend)
     if (activity.total_funding && activity.total_funding > total) {
-      total = activity.total_funding;
+      total = Number(activity.total_funding);
+      console.log(`Backend total_funding for ${activity.name}: ${total}`);
     }
     
+    console.log(`Final calculated funding for ${activity.name}: ${total}`);
     return total;
   };
 
@@ -827,6 +848,15 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                           : Number(subActivity.budget.estimated_cost_without_tool || 0)
                       ) : 0;
                       
+                      const subTotalFunding = subActivity.budget ? (
+                        Number(subActivity.budget.government_treasury || 0) +
+                        Number(subActivity.budget.sdg_funding || 0) +
+                        Number(subActivity.budget.partners_funding || 0) +
+                        Number(subActivity.budget.other_funding || 0)
+                      ) : 0;
+                      
+                      const subFundingGap = Math.max(0, subBudget - subTotalFunding);
+                      
                       return (
                         <div key={subActivity.id} className="bg-white p-4 rounded-lg border border-gray-200">
                           <div className="flex justify-between items-start">
@@ -842,12 +872,29 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                               )}
                             </div>
                             
-                            <button
-                              onClick={() => handleDeleteSubActivity(subActivity.id)}
-                              className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            <div className="flex items-center space-x-2">
+                              {subActivity.budget && (
+                                <button
+                                  onClick={() => {
+                                    setCurrentSubActivity(subActivity);
+                                    setSelectedActivityType(subActivity.activity_type as ActivityType);
+                                    setCalculatedCostData(subActivity.budget);
+                                    setShowBudgetForm(true);
+                                  }}
+                                  className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                                  title="Edit budget"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDeleteSubActivity(subActivity.id)}
+                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                                title="Delete sub-activity"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
                           </div>
                           
                           {/* Budget Information */}
@@ -862,16 +909,16 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                                 </div>
                                 <div>
                                   <span className="text-gray-500">Government:</span>
-                                  <div className="font-medium">${subActivity.budget.government_treasury.toLocaleString()}</div>
+                                  <div className="font-medium">${Number(subActivity.budget.government_treasury || 0).toLocaleString()}</div>
                                 </div>
                                 <div>
                                   <span className="text-gray-500">Partners:</span>
-                                  <div className="font-medium">${subActivity.budget.partners_funding.toLocaleString()}</div>
+                                  <div className="font-medium">${Number(subActivity.budget.partners_funding || 0).toLocaleString()}</div>
                                 </div>
                                 <div>
                                   <span className="text-gray-500">Gap:</span>
-                                  <div className={`font-medium ${(subActivity.budget.funding_gap || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                    ${(subActivity.budget.funding_gap || 0).toLocaleString()}
+                                  <div className={`font-medium ${subFundingGap > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                    ${subFundingGap.toLocaleString()}
                                   </div>
                                 </div>
                               </div>
@@ -901,26 +948,35 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
 
               {/* Activity Totals */}
               <div className="mt-6 pt-4 border-t border-gray-200">
+                {/* Calculate totals for this specific activity */}
+                {(() => {
+                  const activityTotalBudget = calculateActivityTotalBudget(selectedActivityForSubActivities);
+                  const activityTotalFunding = calculateActivityTotalFunding(selectedActivityForSubActivities);
+                  const activityFundingGap = Math.max(0, activityTotalBudget - activityTotalFunding);
+                  
+                  return (
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <div className="bg-blue-50 p-3 rounded-lg">
                     <div className="text-lg font-bold text-blue-600">
-                      ${totalBudget.toLocaleString()}
+                      ${activityTotalBudget.toLocaleString()}
                     </div>
                     <div className="text-xs text-gray-500">Total Budget</div>
                   </div>
                   <div className="bg-green-50 p-3 rounded-lg">
                     <div className="text-lg font-bold text-green-600">
-                      ${totalFunding.toLocaleString()}
+                      ${activityTotalFunding.toLocaleString()}
                     </div>
                     <div className="text-xs text-gray-500">Total Funding</div>
                   </div>
-                  <div className={`p-3 rounded-lg ${fundingGap > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
-                    <div className={`text-lg font-bold ${fundingGap > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      ${fundingGap.toLocaleString()}
+                  <div className={`p-3 rounded-lg ${activityFundingGap > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
+                    <div className={`text-lg font-bold ${activityFundingGap > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      ${activityFundingGap.toLocaleString()}
                     </div>
                     <div className="text-xs text-gray-500">Funding Gap</div>
                   </div>
                 </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -964,12 +1020,13 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
             <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-200 z-10">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-medium text-gray-900">
-                  Budget Sources for {selectedActivityType}
+                  {currentSubActivity ? 'Edit' : 'Add'} Budget Sources for {selectedActivityType}
                 </h3>
                 <button
                   onClick={() => {
                     setShowBudgetForm(false);
                     setCalculatedCostData(null);
+                    setCurrentSubActivity(null);
                   }}
                   className="text-gray-400 hover:text-gray-500"
                 >
@@ -990,8 +1047,9 @@ const MainActivityList: React.FC<MainActivityListProps> = ({
                 onCancel={() => {
                   setShowBudgetForm(false);
                   setCalculatedCostData(null);
+                  setCurrentSubActivity(null);
                 }}
-                isSubmitting={createBudgetMutation.isPending}
+                isSubmitting={createBudgetMutation.isPending || createSubActivityMutation.isPending}
               />
             </div>
           </div>
