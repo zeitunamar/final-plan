@@ -126,11 +126,22 @@ const AdminDashboard: React.FC = () => {
       ['SUBMITTED', 'APPROVED'].includes(plan.status)
     );
 
+    console.log(`Processing ${relevantPlans.length} relevant plans for activity breakdown`);
     relevantPlans.forEach((plan: any) => {
       const orgId = Number(plan.organization);
       const orgName = getOrganizationName(plan);
       
-      const objectives = plan.objectives || plan.selected_objectives_data || plan.objectives_data || [];
+      // Check multiple possible data structures for objectives
+      let objectives = [];
+      if (plan.objectives && Array.isArray(plan.objectives)) {
+        objectives = plan.objectives;
+      } else if (plan.selected_objectives_data && Array.isArray(plan.selected_objectives_data)) {
+        objectives = plan.selected_objectives_data;
+      } else if (plan.objectives_data && Array.isArray(plan.objectives_data)) {
+        objectives = plan.objectives_data;
+      }
+      
+      console.log(`Plan ${plan.id} (${orgName}): ${objectives.length} objectives`);
       
       objectives.forEach((objective: any) => {
         const initiatives = objective.initiatives || [];
@@ -142,16 +153,24 @@ const AdminDashboard: React.FC = () => {
             // Calculate budget from sub-activities if they exist
             if (activity.sub_activities && activity.sub_activities.length > 0) {
               activity.sub_activities.forEach((subActivity: any) => {
-                let activityType = (subActivity.activity_type || 'Other').toLowerCase();
+            // Process sub-activities if they exist
+            if (activity.sub_activities && activity.sub_activities.length > 0) {
+              console.log(`Processing ${activity.sub_activities.length} sub-activities for activity "${activity.name}"`);
+              
+              activity.sub_activities.forEach((subActivity: any) => {
                 const budget = subActivity.budget_calculation_type === 'WITH_TOOL'
                   ? Number(subActivity.estimated_cost_with_tool || 0)
                   : Number(subActivity.estimated_cost_without_tool || 0);
+                
+                let activityType = (subActivity.activity_type || 'other').toLowerCase();
                 
                 // Normalize activity types
                 if (activityType === 'supervision') activityType = 'other';
                 if (!activityTypes.map(t => t.toLowerCase()).includes(activityType)) {
                   activityType = 'other';
                 }
+                
+                console.log(`Sub-activity "${subActivity.name}" (${activityType}): budget=${budget}`);
                 
                 // Find existing entry or create new one
                 const existingIndex = activityBreakdown.findIndex(item => 
@@ -171,6 +190,38 @@ const AdminDashboard: React.FC = () => {
                   });
                 }
               });
+            } else if (activity.budget) {
+              // Handle legacy budget structure for backward compatibility
+              console.log(`Using legacy budget for activity "${activity.name}"`);
+              
+              let activityType = (activity.budget.activity_type || 'other').toLowerCase();
+              const budget = activity.budget.budget_calculation_type === 'WITH_TOOL' 
+                ? Number(activity.budget.estimated_cost_with_tool || 0)
+                : Number(activity.budget.estimated_cost_without_tool || 0);
+              
+              // Normalize activity types
+              if (activityType === 'supervision') activityType = 'other';
+              if (!activityTypes.map(t => t.toLowerCase()).includes(activityType)) {
+                activityType = 'other';
+              }
+              
+              // Find existing entry or create new one
+              const existingIndex = activityBreakdown.findIndex(item => 
+                item.organizationId === orgId && item.activityType === activityType
+              );
+              
+              if (existingIndex >= 0) {
+                activityBreakdown[existingIndex].budget += budget;
+                activityBreakdown[existingIndex].count += 1;
+              } else {
+                activityBreakdown.push({
+                  organizationId: orgId,
+                  organizationName: orgName,
+                  activityType,
+                  budget,
+                  count: 1
+                });
+              }
             } else if (activity.budget) {
               // Use legacy budget if no sub-activities
               let activityType = (activity.budget.activity_type || 'Other').toLowerCase();
@@ -207,6 +258,7 @@ const AdminDashboard: React.FC = () => {
       });
     });
 
+    console.log(`Activity breakdown calculation complete: ${activityBreakdown.length} entries`);
     return activityBreakdown;
   }, [allPlansData, organizationsMap, activityTypes]);
 
@@ -343,6 +395,8 @@ const AdminDashboard: React.FC = () => {
           objectivesData = plan.objectives_data;
         }
         
+        console.log(`Calculating budget for plan ${plan.id} with ${objectivesData.length} objectives`);
+        
         // Traverse objectives → initiatives → main_activities to get budget data
         objectivesData.forEach((objective: any) => {
           if (objective.initiatives && Array.isArray(objective.initiatives)) {
@@ -384,8 +438,45 @@ const AdminDashboard: React.FC = () => {
                         activityBreakdown.other.budget += subBudgetRequired;
                       }
                     });
+                  // Calculate budget from sub-activities if they exist
+                  if (activity.sub_activities && activity.sub_activities.length > 0) {
+                    console.log(`Processing main activity "${activity.name}" with ${activity.sub_activities.length} sub-activities`);
+                    
+                    activity.sub_activities.forEach((subActivity: any) => {
+                      // Use direct SubActivity model fields
+                      const subBudgetRequired = subActivity.budget_calculation_type === 'WITH_TOOL'
+                        ? Number(subActivity.estimated_cost_with_tool || 0)
+                        : Number(subActivity.estimated_cost_without_tool || 0);
+                      
+                      const subGov = Number(subActivity.government_treasury || 0);
+                      const subPartners = Number(subActivity.partners_funding || 0);
+                      const subSdg = Number(subActivity.sdg_funding || 0);
+                      const subOther = Number(subActivity.other_funding || 0);
+                      
+                      console.log(`Sub-activity "${subActivity.name}": budget=${subBudgetRequired}, gov=${subGov}, partners=${subPartners}, sdg=${subSdg}, other=${subOther}`);
+                      
+                      totalBudget += subBudgetRequired;
+                      governmentFunding += subGov;
+                      sdgFunding += subSdg;
+                      partnersFunding += subPartners;
+                      otherFunding += subOther;
+                      
+                      // Track activity type budgets from sub-activities
+                      let activityType = (subActivity.activity_type || 'other').toLowerCase();
+                      if (activityType === 'supervision') activityType = 'other';
+                      
+                      if (activityBreakdown[activityType]) {
+                        activityBreakdown[activityType].count += 1;
+                        activityBreakdown[activityType].budget += subBudgetRequired;
+                      } else {
+                        activityBreakdown.other.count += 1;
+                        activityBreakdown.other.budget += subBudgetRequired;
+                      }
+                    });
                   } else if (activity.budget) {
-                    // Use legacy budget if no sub-activities
+                    // Use legacy budget if no sub-activities (for backward compatibility)
+                    console.log(`Using legacy budget for activity "${activity.name}"`);
+                    
                     const estimatedCost = activity.budget.budget_calculation_type === 'WITH_TOOL' 
                       ? Number(activity.budget.estimated_cost_with_tool || 0)
                       : Number(activity.budget.estimated_cost_without_tool || 0);
@@ -407,14 +498,27 @@ const AdminDashboard: React.FC = () => {
                       activityBreakdown.other.count += 1;
                       activityBreakdown.other.budget += estimatedCost;
                     }
+                    }
+                  } else {
+                    console.log(`Activity "${activity.name}" has no budget data (no sub-activities or legacy budget)`);
                   }
                 });
               }
             });
           }
         });
+        
+        console.log(`Plan ${plan.id} budget calculation complete:`, {
+          totalBudget,
+          governmentFunding,
+          sdgFunding,
+          partnersFunding,
+          otherFunding,
+          activityBreakdown
+        });
+        
       } catch (error) {
-        console.warn(`Error calculating budget for plan ${plan.id}`);
+        console.error(`Error calculating budget for plan ${plan.id}:`, error);
       }
       
       const totalAvailableFunding = governmentFunding + sdgFunding + partnersFunding + otherFunding;
